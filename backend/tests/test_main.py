@@ -19,3 +19,12 @@ def test_health_confirma_modelul():
     corp = raspuns.json()
     assert corp["status"] == "ok"
     assert corp["model_raspunde"] is True
+
+
+def test_trimite_mesaj_primeste_raspuns_de_la_maestra():
+    raspuns = client.post("/api/mesaje", json={"text": "Ce parere ai despre AB simulat pe poza?"})
+
+    assert raspuns.status_code == 200
+    corp = raspuns.json()
+    assert corp["personaj"] == "Maestra"
+    assert corp["text"].strip() != ""

@@ -187,11 +187,64 @@
 </main>
 
 <footer>
-  <form>
-    <input type="text" placeholder="Scrie un mesaj în consiliu..." />
+  <form id="form-mesaj">
+    <input type="text" id="input-mesaj" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
     <button type="submit">Trimite</button>
   </form>
 </footer>
+
+<script>
+  const main = document.querySelector("main");
+  const form = document.getElementById("form-mesaj");
+  const input = document.getElementById("input-mesaj");
+
+  function adaugaMesaj({ eu, nume, avatar, culoare, text }) {
+    const mesaj = document.createElement("div");
+    mesaj.className = "mesaj" + (eu ? " eu" : "");
+
+    const avatarDiv = document.createElement("div");
+    avatarDiv.className = "avatar";
+    avatarDiv.style.background = culoare;
+    avatarDiv.textContent = avatar;
+
+    const numeDiv = document.createElement("div");
+    numeDiv.className = "nume";
+    numeDiv.textContent = nume;
+
+    const bulaDiv = document.createElement("div");
+    bulaDiv.className = "bula";
+    bulaDiv.textContent = text;
+
+    const continutDiv = document.createElement("div");
+    continutDiv.className = "continut";
+    continutDiv.append(numeDiv, bulaDiv);
+
+    mesaj.append(avatarDiv, continutDiv);
+    main.appendChild(mesaj);
+    main.scrollTop = main.scrollHeight;
+  }
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+
+    adaugaMesaj({ eu: true, nume: "Simona", avatar: "🙋", culoare: "#6c5ce7", text });
+    input.value = "";
+    input.disabled = true;
+
+    const raspuns = await fetch("/api/mesaje", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const date = await raspuns.json();
+    adaugaMesaj({ eu: false, nume: date.personaj, ...date });
+
+    input.disabled = false;
+    input.focus();
+  });
+</script>
 
 </body>
 </html>
