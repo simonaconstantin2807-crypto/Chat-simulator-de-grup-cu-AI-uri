@@ -152,39 +152,7 @@
   <span class="subtitlu">5 personaje &middot; o singură decizie</span>
 </header>
 
-<main>
-  <div class="mesaj eu">
-    <div class="avatar" style="background:#6c5ce7">🙋</div>
-    <div class="continut">
-      <div class="nume">Simona</div>
-      <div class="bula">Ce nume îi punem platformei SaaS, dacă vreodată deschidem și pentru alte creatoare?</div>
-    </div>
-  </div>
-
-  <div class="mesaj">
-    <div class="avatar" style="background:#2C3E50">💼</div>
-    <div class="continut">
-      <div class="nume">Antreprenoarea</div>
-      <div class="bula">Ceva ușor de căutat, care nu se ciocnește cu PlanBead sau Beadographer — dar mai întâi decidem dacă avem un singur creator sau mai mulți, altfel numele e o cheltuială degeaba.</div>
-    </div>
-  </div>
-
-  <div class="mesaj">
-    <div class="avatar" style="background:#6C5CE7">💻</div>
-    <div class="continut">
-      <div class="nume">Programatorul</div>
-      <div class="bula">De acord, e o decizie de etapă, nu de azi — MVP-ul are un singur produs, deci numele SaaS-ului nu ne blochează acum.</div>
-    </div>
-  </div>
-
-  <div class="mesaj">
-    <div class="avatar" style="background:#C9A227">🪡</div>
-    <div class="continut">
-      <div class="nume">Maestra</div>
-      <div class="bula">Numele lui e treaba voastră — mie să-mi spuneți dacă recolorarea rămâne fidelă la AB, restul e detaliu.</div>
-    </div>
-  </div>
-</main>
+<main></main>
 
 <footer>
   <form id="form-mesaj">
@@ -222,7 +190,17 @@
     mesaj.append(avatarDiv, continutDiv);
     main.appendChild(mesaj);
     main.scrollTop = main.scrollHeight;
+
+    return { avatarDiv, numeDiv, bulaDiv };
   }
+
+  async function incarcaIstoric() {
+    const raspuns = await fetch("/api/mesaje");
+    const mesaje = await raspuns.json();
+    mesaje.forEach(adaugaMesaj);
+  }
+
+  incarcaIstoric();
 
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -233,16 +211,62 @@
     input.value = "";
     input.disabled = true;
 
-    const raspuns = await fetch("/api/mesaje", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+    const { avatarDiv, numeDiv, bulaDiv } = adaugaMesaj({
+      eu: false,
+      nume: "",
+      avatar: "💬",
+      culoare: "#ccc",
+      text: "...",
     });
-    const date = await raspuns.json();
-    adaugaMesaj({ eu: false, nume: date.personaj, ...date });
 
-    input.disabled = false;
-    input.focus();
+    try {
+      const raspuns = await fetch("/api/mesaje", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      const reader = raspuns.body.getReader();
+      const decoder = new TextDecoder();
+      let bufferMetadate = "";
+      let metadateCitite = false;
+      let continutInceput = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const bucata = decoder.decode(value, { stream: true });
+
+        if (!metadateCitite) {
+          bufferMetadate += bucata;
+          const indexNewline = bufferMetadate.indexOf("\n");
+          if (indexNewline === -1) continue;
+
+          const metadate = JSON.parse(bufferMetadate.slice(0, indexNewline));
+          avatarDiv.style.background = metadate.culoare;
+          avatarDiv.textContent = metadate.avatar;
+          numeDiv.textContent = metadate.nume;
+          metadateCitite = true;
+
+          const restul = bufferMetadate.slice(indexNewline + 1);
+          if (restul) {
+            bulaDiv.textContent = restul;
+            continutInceput = true;
+          }
+          continue;
+        }
+
+        if (!continutInceput) {
+          bulaDiv.textContent = "";
+          continutInceput = true;
+        }
+        bulaDiv.textContent += bucata;
+        main.scrollTop = main.scrollHeight;
+      }
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
   });
 </script>
 
