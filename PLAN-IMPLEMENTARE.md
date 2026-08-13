@@ -20,6 +20,10 @@ Ce se știe despre direcție:
   validate pe Gemini, în Google AI Studio).
 - **Temperatura e per personaj**, nu globală — valorile recomandate sunt în fiecare
   `personaj-*.md` (0.3 la Operatoarea, 0.8 la Clienta). Cursul încurajează explicit asta.
+- **Personajele sunt definite într-un fișier JSON de configurare** (`personaje.json`), nu
+  hardcodate în cod — fiecare intrare are id, nume, avatar, culoare, temperatura recomandată și
+  system prompt. Fișierele `personaj-*.md` rămân sursa de conținut pentru system prompt-uri,
+  nu formatul de rulare.
 - Rularea trebuie să pornească într-un pas, sau doi dacă backend și frontend sunt separate.
 
 ## Decizii de design lăsate implementatorului
@@ -61,11 +65,15 @@ Trimit un mesaj, **un singur personaj** (ex. Maestra) răspunde, fără streamin
 Răspunsul apare token cu token, cu indicator de „scrie..." înainte de primul cuvânt. Ăsta e
 efectul „wow" al proiectului.
 
-## M5 — Toate 5 personaje + orchestrare
+## M5 — Toate 5 personaje + orchestrare pe mențiuni (provizorie)
 
-Toate personajele din `personaj-*.md` sunt disponibile. La fiecare mesaj, 1-2 personaje
-răspund; uneori un al treilea comentează pe scurt ce a zis altul. Personajele văd ce a zis
-grupul până acum, nu doar ce am scris eu.
+Toate personajele din `personaje.json` sunt disponibile. Dacă mesajul conține `@NumePersonaj`,
+răspunde doar personajul (sau personajele) menționat(e); dacă nu conține nicio mențiune, răspund
+toate cele 5. Personajele văd ce a zis grupul până acum, nu doar ce am scris eu.
+
+Regula de mențiuni e soluția minimă pentru această fază, nu decizia finală — o orchestrare mai
+inteligentă (ex. personajele decid singure dacă au ceva de adăugat) rămâne de discutat într-o
+etapă ulterioară a MVP-ului.
 
 ## M6 — Memorie și polish
 
@@ -88,4 +96,6 @@ Conversația supraviețuiește la refresh. Pot scrie oricând, chiar peste un pe
 Fără cont/login (dacă apare vreodată nevoia, e o decizie separată — vezi disputa rezolvată în
 `personaj-programatorul.md`). Fără RAG, fără tool calling, fără căutare live în
 `concept-aplicatie-miyuki.md` — cunoștințele personajelor sunt cele din system prompt-urile
-lor, atât.
+lor, atât. Fără orchestrare „deșteaptă" (personajele decizând singure cine răspunde) — la M5
+rămânem la regula simplă de mențiuni `@NumePersonaj`, urmează să fie rediscutată într-o etapă
+viitoare.

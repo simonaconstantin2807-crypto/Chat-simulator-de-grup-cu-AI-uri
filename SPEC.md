@@ -37,8 +37,10 @@ personaje care au opinii, nu doar informații.
 ## 3. Cum funcționează
 
 Chat de grup clasic: eu scriu un mesaj (o întrebare din `concept-aplicatie-miyuki.md`, de
-exemplu una din secțiunea „Întrebări deschise", sau o decizie de design nouă), iar 1-2
-personaje răspund, uneori comentând ce a zis un altul, nu doar ce am zis eu. Pot interveni
+exemplu una din secțiunea „Întrebări deschise", sau o decizie de design nouă). Dacă mesajul
+conține o mențiune `@NumePersonaj`, răspunde doar personajul (sau personajele) menționat(e);
+dacă nu conține nicio mențiune, răspund toate cele 5, ca într-o ședință de consiliu convocată
+integral. Un personaj poate comenta ce a zis un altul, nu doar ce am zis eu. Pot interveni
 oricând — nu aștept să se termine runda.
 
 Personajele nu caută informația live (fără RAG, fără tool calling) — fiecare are, în system
