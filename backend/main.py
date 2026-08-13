@@ -1,4 +1,6 @@
 import json
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,10 +8,26 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import istoric
-from ai_client import trimite_mesaj, trimite_mesaj_stream
+from ai_client import preincarca, trimite_mesaj, trimite_mesaj_stream
 from personaje import incarca_personaje
 
-app = FastAPI()
+
+def incalzeste_modelul() -> None:
+    try:
+        preincarca()
+    except Exception as eroare:
+        # Daca Ollama nu e pornit, eroarea reapare oricum la primul mesaj, unde se si vede.
+        print(f"[avertisment] preincarcarea modelului a esuat: {eroare}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # In fundal, ca serverul sa raspunda imediat; modelul se incarca in paralel cu deschiderea paginii.
+    threading.Thread(target=incalzeste_modelul, daemon=True).start()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).parent / "static"
 PERSONAJE = incarca_personaje()

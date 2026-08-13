@@ -1,4 +1,16 @@
-from ai_client import _curata_stream, elimina_prefix_nume, trimite_mesaj, trimite_mesaj_stream
+import ollama
+
+from ai_client import (
+    KEEP_ALIVE,
+    MAX_TOKENI,
+    MODEL_IMPLICIT,
+    _construieste_cerere,
+    _curata_stream,
+    elimina_prefix_nume,
+    preincarca,
+    trimite_mesaj,
+    trimite_mesaj_stream,
+)
 
 
 def test_trimite_mesaj_returneaza_text_nevid():
@@ -13,6 +25,45 @@ def test_trimite_mesaj_stream_returneaza_text_nevid():
     raspuns = "".join(bucati)
 
     assert raspuns.strip() != ""
+
+
+def test_cererea_tine_modelul_incarcat_intre_mesaje():
+    cerere = _construieste_cerere("Salut", sistem=None, temperatura=None)
+
+    assert cerere["keep_alive"] == KEEP_ALIVE
+
+
+def test_cererea_plafoneaza_lungimea_raspunsului():
+    cerere = _construieste_cerere("Salut", sistem=None, temperatura=None)
+
+    assert cerere["options"]["num_predict"] == MAX_TOKENI
+
+
+def test_cererea_opreste_gandirea_modelului():
+    cerere = _construieste_cerere("Salut", sistem=None, temperatura=None)
+
+    assert cerere["think"] is False
+
+
+def test_modelul_scrie_text_vizibil_nu_doar_rationament():
+    """Cu gandirea pornita, modelul consuma sute de tokeni interni si nu ajunge la raspuns."""
+    bucati = list(trimite_mesaj_stream("Ce parere ai despre AB simulat pe poza?", "Maestra"))
+
+    assert "".join(bucati).strip() != ""
+
+
+def test_preincarca_aduce_modelul_in_memorie():
+    preincarca()
+
+    incarcate = ollama.ps().models
+
+    assert any(m.model == MODEL_IMPLICIT for m in incarcate)
+
+
+def test_raspunsul_nu_depaseste_plafonul_de_tokeni():
+    bucati = list(trimite_mesaj_stream("Descrie in detaliu istoria margelelor Miyuki.", "Maestra"))
+
+    assert 0 < len(bucati) <= MAX_TOKENI
 
 
 def test_elimina_prefix_nume_taie_prefixul_cu_spatiu():

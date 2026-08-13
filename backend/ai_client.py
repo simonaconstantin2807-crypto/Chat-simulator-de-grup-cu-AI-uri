@@ -4,6 +4,20 @@ import ollama
 
 MODEL_IMPLICIT = "gemma4:e2b"
 
+# Cat timp tine Ollama modelul in memorie intre mesaje. Implicit sunt 5 minute, iar dupa ele
+# urmatorul mesaj asteapta ~13s doar reincarcarea celor 6.7 GB de pe disc (masurat: 13.10s la
+# rece vs 1.11s la cald). O ora acopera o sesiune de consiliu fara reincarcari.
+KEEP_ALIVE = "1h"
+
+# gemma4:e2b e un model "thinking": implicit isi scrie intai rationamentul intern - sute de
+# tokeni pe care utilizatoarea nu-i vede, dar ii asteapta - si abia apoi raspunsul. Oprit,
+# primul cuvant vizibil apare in ~3s in loc de ~17s (masurat pe aceeasi intrebare).
+GANDIRE = False
+
+# Personajele au in system prompt regula "1-3 propozitii scurte". Plafonul opreste derapajele
+# rare, nu raspunsul normal, care sta pe la 40-60 de tokeni.
+MAX_TOKENI = 200
+
 
 def elimina_prefix_nume(text: str, nume: str) -> str:
     prefix = f"{nume}:"
@@ -37,12 +51,25 @@ def _construieste_cerere(mesaj: str, sistem: str | None, temperatura: float | No
         mesaje.append({"role": "system", "content": sistem})
     mesaje.append({"role": "user", "content": mesaj})
 
-    # gemma4:e2b crapa la incarcarea pe GPU (bug CUDA cu driverul curent) - ruleaza pe CPU pana se rezolva.
-    optiuni = {"num_gpu": 0}
+    # gemma4:e2b crapa la incarcarea pe GPU (bug CUDA cu driverul curent) - ruleaza pe CPU pana
+    # se rezolva. Verificat din nou cu Ollama 0.32.9 / driver 610.88: llama-server iese cu
+    # 0xc0000409 si "CUDA error: shared object initialization failed", indiferent de num_ctx.
+    optiuni = {"num_gpu": 0, "num_predict": MAX_TOKENI}
     if temperatura is not None:
         optiuni["temperature"] = temperatura
 
-    return {"messages": mesaje, "options": optiuni}
+    return {"messages": mesaje, "options": optiuni, "keep_alive": KEEP_ALIVE, "think": GANDIRE}
+
+
+def preincarca(model: str = MODEL_IMPLICIT) -> None:
+    """Aduce modelul in memorie inainte de primul mesaj, ca sa nu astepte utilizatoarea incarcarea."""
+    ollama.chat(
+        model=model,
+        messages=[{"role": "user", "content": "ok"}],
+        options={"num_gpu": 0, "num_predict": 1},
+        keep_alive=KEEP_ALIVE,
+        think=GANDIRE,
+    )
 
 
 def trimite_mesaj(

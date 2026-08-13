@@ -1,8 +1,10 @@
 import json
+import threading
 
 from fastapi.testclient import TestClient
 
 import istoric
+import main
 from main import app
 
 client = TestClient(app)
@@ -11,6 +13,23 @@ client = TestClient(app)
 def _db_izolat(monkeypatch, tmp_path):
     monkeypatch.setattr(istoric, "DB_PATH", tmp_path / "test.db")
     istoric.init_db()
+
+
+def test_pornirea_preincarca_modelul_in_fundal(monkeypatch):
+    apelat = threading.Event()
+    monkeypatch.setattr(main, "preincarca", apelat.set)
+
+    with TestClient(app):
+        assert apelat.wait(timeout=5)
+
+
+def test_pornirea_nu_cade_daca_modelul_nu_raspunde(monkeypatch):
+    def crapa():
+        raise RuntimeError("Ollama oprit")
+
+    monkeypatch.setattr(main, "preincarca", crapa)
+
+    main.incalzeste_modelul()  # inghite eroarea, nu opreste serverul
 
 
 def test_pagina_chat_se_incarca():
