@@ -11,7 +11,7 @@
     --text: #2c2c2c;
     --muted: #8a8580;
     --border: #e4ded2;
-    --accent: #6c5ce7;
+    --cerneala: #3d3a36;
   }
 
   * { box-sizing: border-box; }
@@ -27,23 +27,67 @@
   }
 
   header {
-    padding: 16px 24px;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
+  }
+
+  .titlu {
+    padding: 14px 24px 10px;
     display: flex;
     align-items: baseline;
     gap: 10px;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
   }
 
-  header h1 {
+  .titlu h1 {
     font-size: 1.1rem;
     margin: 0;
   }
 
-  header span.subtitlu {
+  .titlu .subtitlu {
     font-size: 0.85rem;
     color: var(--muted);
   }
+
+  .roster {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 24px 12px;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 5px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel);
+    cursor: pointer;
+    white-space: nowrap;
+    font: inherit;
+    color: inherit;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .chip:hover { border-color: var(--culoare); }
+
+  .chip.selectat {
+    border-color: var(--culoare);
+    background: var(--fundal);
+  }
+
+  .chip .avatar { width: 26px; height: 26px; min-width: 26px; font-size: 0.85rem; }
+
+  .chip .eticheta { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+  .chip .eticheta b { font-size: 0.8rem; color: var(--culoare); }
+  .chip .eticheta small { font-size: 0.68rem; color: var(--muted); }
 
   main {
     flex: 1;
@@ -52,15 +96,24 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
-    max-width: 720px;
+    max-width: 760px;
     width: 100%;
     margin: 0 auto;
+  }
+
+  .gol {
+    margin: auto;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.6;
   }
 
   .mesaj {
     display: flex;
     gap: 10px;
     align-items: flex-start;
+    max-width: 100%;
   }
 
   .mesaj.eu {
@@ -78,146 +131,512 @@
     justify-content: center;
     font-size: 1.1rem;
     color: #fff;
+    background: var(--culoare, #ccc);
   }
 
-  .continut {
-    max-width: 75%;
-  }
+  .continut { max-width: 75%; }
 
   .nume {
     font-size: 0.78rem;
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 3px;
-    color: var(--muted);
+    color: var(--culoare, var(--muted));
   }
 
-  .mesaj.eu .nume { text-align: right; }
+  .nume .rol {
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 6px;
+  }
+
+  .mesaj.eu .nume { text-align: right; color: var(--muted); }
 
   .bula {
-    background: var(--panel);
+    background: var(--fundal, var(--panel));
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-left: 3px solid var(--culoare, var(--border));
+    border-radius: 4px 14px 14px 4px;
     padding: 10px 14px;
-    line-height: 1.4;
+    line-height: 1.45;
     font-size: 0.95rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    width: fit-content;
+    max-width: 100%;
   }
 
   .mesaj.eu .bula {
-    background: var(--accent);
+    background: var(--cerneala);
     color: #fff;
-    border-color: var(--accent);
+    border-color: var(--cerneala);
+    border-left-width: 1px;
+    border-radius: 14px 4px 4px 14px;
+    margin-left: auto;
+  }
+
+  .bula.eroare {
+    color: #b3261e;
+    font-style: italic;
+    background: var(--panel);
+  }
+
+  .mentiune {
+    font-weight: 600;
+    color: var(--culoare-mentiune, inherit);
+  }
+
+  .mesaj.eu .mentiune { color: #fff; text-decoration: underline; }
+
+  .scrie { display: inline-flex; gap: 4px; align-items: center; height: 1.45em; }
+
+  .scrie i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--culoare, var(--muted));
+    opacity: 0.35;
+    animation: puls 1.1s infinite;
+  }
+
+  .scrie i:nth-child(2) { animation-delay: 0.18s; }
+  .scrie i:nth-child(3) { animation-delay: 0.36s; }
+
+  @keyframes puls {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
   }
 
   footer {
-    padding: 14px 20px;
+    padding: 12px 20px 14px;
     background: var(--panel);
     border-top: 1px solid var(--border);
   }
 
-  form {
-    max-width: 720px;
+  .zona-input {
+    max-width: 760px;
     margin: 0 auto;
-    display: flex;
-    gap: 10px;
+    position: relative;
   }
+
+  form { display: flex; gap: 10px; }
 
   input[type="text"] {
     flex: 1;
+    min-width: 0;
     padding: 12px 16px;
     border-radius: 20px;
     border: 1px solid var(--border);
     font-size: 0.95rem;
+    font-family: inherit;
   }
 
   input[type="text"]:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--cerneala);
   }
 
   button {
     padding: 0 20px;
     border-radius: 20px;
     border: none;
-    background: var(--accent);
+    background: var(--cerneala);
     color: #fff;
     font-weight: 600;
+    font-family: inherit;
     cursor: pointer;
+  }
+
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .indiciu {
+    font-size: 0.75rem;
+    color: var(--muted);
+    padding: 7px 16px 0;
+    min-height: 1.4em;
+  }
+
+  .sugestii {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.09);
+    overflow: hidden;
+    z-index: 5;
+  }
+
+  .sugestii[hidden] { display: none; }
+
+  .sugestie {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 0.88rem;
+  }
+
+  .sugestie .avatar { width: 26px; height: 26px; min-width: 26px; font-size: 0.85rem; }
+  .sugestie b { color: var(--culoare); }
+  .sugestie small { color: var(--muted); }
+  .sugestie.activa { background: var(--fundal); }
+
+  @media (max-width: 600px) {
+    .titlu, .roster { padding-left: 14px; padding-right: 14px; }
+    .titlu { flex-direction: column; gap: 2px; }
+    .chip .eticheta small { display: none; }
+    main { padding: 14px; }
+    .continut { max-width: 82%; }
+    footer { padding: 10px 12px 12px; }
+    .sugestie small { display: none; }
   }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Consiliul CoSiMa</h1>
-  <span class="subtitlu">5 personaje &middot; o singură decizie</span>
+  <div class="titlu">
+    <h1>Consiliul CoSiMa</h1>
+    <span class="subtitlu">scrie <b>@Nume</b> ca să întrebi pe cineva anume</span>
+  </div>
+  <div class="roster" id="roster"></div>
 </header>
 
-<main></main>
+<main id="conversatie"></main>
 
 <footer>
-  <form id="form-mesaj">
-    <input type="text" id="input-mesaj" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
-    <button type="submit">Trimite</button>
-  </form>
+  <div class="zona-input">
+    <div class="sugestii" id="sugestii" hidden></div>
+    <form id="form-mesaj">
+      <input type="text" id="input-mesaj" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
+      <button type="submit" id="buton-trimite">Trimite</button>
+    </form>
+    <div class="indiciu" id="indiciu"></div>
+  </div>
 </footer>
 
 <script>
-  const main = document.querySelector("main");
+  const conversatie = document.getElementById("conversatie");
+  const roster = document.getElementById("roster");
+  const sugestii = document.getElementById("sugestii");
+  const indiciu = document.getElementById("indiciu");
   const form = document.getElementById("form-mesaj");
   const input = document.getElementById("input-mesaj");
+  const buton = document.getElementById("buton-trimite");
 
-  function adaugaMesaj({ eu, nume, avatar, culoare, text }) {
-    const mesaj = document.createElement("div");
-    mesaj.className = "mesaj" + (eu ? " eu" : "");
+  let personaje = [];
+  let utilizator = { nume: "Simona", avatar: "🙋", culoare: "#3D3A36" };
+  let indexSugestie = 0;
 
-    const avatarDiv = document.createElement("div");
-    avatarDiv.className = "avatar";
-    avatarDiv.style.background = culoare;
-    avatarDiv.textContent = avatar;
+  // ---------- identitate ----------
 
-    const numeDiv = document.createElement("div");
-    numeDiv.className = "nume";
-    numeDiv.textContent = nume;
+  function aplicaIdentitate(element, profil) {
+    element.style.setProperty("--culoare", profil.culoare || "#ccc");
+    element.style.setProperty("--fundal", profil.culoareFundal || "#fff");
+  }
 
-    const bulaDiv = document.createElement("div");
-    bulaDiv.className = "bula";
-    bulaDiv.textContent = text;
+  function creeazaAvatar(profil) {
+    const el = document.createElement("div");
+    el.className = "avatar";
+    el.textContent = profil.avatar || "💬";
+    return el;
+  }
 
-    const continutDiv = document.createElement("div");
-    continutDiv.className = "continut";
-    continutDiv.append(numeDiv, bulaDiv);
+  function dupaEticheta(eticheta) {
+    const cautat = eticheta.toLowerCase();
+    return personaje.find((p) => p.nume.toLowerCase() === cautat || p.id.toLowerCase() === cautat);
+  }
 
-    mesaj.append(avatarDiv, continutDiv);
-    main.appendChild(mesaj);
-    main.scrollTop = main.scrollHeight;
+  // ---------- scroll ----------
 
-    return { avatarDiv, numeDiv, bulaDiv };
+  function lipitDeFinal() {
+    return conversatie.scrollHeight - conversatie.scrollTop - conversatie.clientHeight < 90;
+  }
+
+  function laFinal() {
+    conversatie.scrollTop = conversatie.scrollHeight;
+  }
+
+  // ---------- mesaje ----------
+
+  /** Scrie textul in bula, cu @mentiunile evidentiate in culoarea personajului chemat. */
+  function scrieText(bula, text) {
+    bula.textContent = "";
+    const bucati = text.split(/(@\w+)/);
+    for (const bucata of bucati) {
+      const potrivire = bucata.match(/^@(\w+)$/);
+      const personaj = potrivire && dupaEticheta(potrivire[1]);
+      if (!personaj) {
+        bula.append(document.createTextNode(bucata));
+        continue;
+      }
+      const span = document.createElement("span");
+      span.className = "mentiune";
+      span.style.setProperty("--culoare-mentiune", personaj.culoare);
+      span.textContent = bucata;
+      bula.append(span);
+    }
+  }
+
+  function adaugaMesaj(mesaj) {
+    const eraJos = lipitDeFinal();
+    document.getElementById("gol")?.remove();
+    // Mesajele din istoric isi iau identitatea din profilul curent, ca sa nu ramana cu o
+    // culoare veche daca personajul se schimba in personaje.json.
+    const profil = personaje.find((p) => p.id === mesaj.personajId) || mesaj;
+
+    const element = document.createElement("div");
+    element.className = "mesaj" + (mesaj.eu ? " eu" : "");
+    aplicaIdentitate(element, profil);
+
+    const avatar = creeazaAvatar(profil);
+
+    const nume = document.createElement("div");
+    nume.className = "nume";
+    nume.textContent = profil.nume || "";
+    if (profil.rol && !mesaj.eu) {
+      const rol = document.createElement("span");
+      rol.className = "rol";
+      rol.textContent = profil.rol;
+      nume.append(rol);
+    }
+
+    const bula = document.createElement("div");
+    bula.className = "bula";
+    scrieText(bula, mesaj.text || "");
+
+    const continut = document.createElement("div");
+    continut.className = "continut";
+    continut.append(nume, bula);
+
+    element.append(avatar, continut);
+    conversatie.append(element);
+
+    if (eraJos || mesaj.eu) laFinal();
+    return { element, avatar, nume, bula };
+  }
+
+  /** Bula cu punctele animate, cat timp personajul se gandeste. */
+  function adaugaIndicator(profil) {
+    const mesaj = adaugaMesaj({ ...profil, text: "" });
+    const puncte = document.createElement("span");
+    puncte.className = "scrie";
+    puncte.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+    mesaj.bula.append(puncte);
+    laFinal();
+    return mesaj;
+  }
+
+  function completeazaIdentitatea(mesaj, profil) {
+    aplicaIdentitate(mesaj.element, profil);
+    mesaj.avatar.textContent = profil.avatar;
+    mesaj.nume.textContent = profil.nume;
+    const rol = document.createElement("span");
+    rol.className = "rol";
+    rol.textContent = profil.rol;
+    mesaj.nume.append(rol);
+  }
+
+  // ---------- roster si mentiuni ----------
+
+  function mentiuniDinText(text) {
+    const gasite = [];
+    for (const potrivire of text.matchAll(/@(\w+)/g)) {
+      const personaj = dupaEticheta(potrivire[1]);
+      if (personaj && !gasite.includes(personaj)) gasite.push(personaj);
+    }
+    return gasite;
+  }
+
+  function comutaMentiune(personaj) {
+    const tipar = new RegExp(`@${personaj.nume}\\s*`, "i");
+    input.value = tipar.test(input.value)
+      ? input.value.replace(tipar, "").trim()
+      : `${input.value.trim()} @${personaj.nume} `.trimStart();
+    input.focus();
+    actualizeazaIndiciu();
+  }
+
+  function deseneazaRoster() {
+    roster.textContent = "";
+    for (const personaj of personaje) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.dataset.id = personaj.id;
+      aplicaIdentitate(chip, personaj);
+
+      const eticheta = document.createElement("span");
+      eticheta.className = "eticheta";
+      const nume = document.createElement("b");
+      nume.textContent = personaj.nume;
+      const rol = document.createElement("small");
+      rol.textContent = personaj.rol;
+      eticheta.append(nume, rol);
+
+      chip.append(creeazaAvatar(personaj), eticheta);
+      chip.addEventListener("click", () => comutaMentiune(personaj));
+      roster.append(chip);
+    }
+  }
+
+  function actualizeazaIndiciu() {
+    const chemate = mentiuniDinText(input.value);
+    const numeChemate = chemate.map((p) => p.nume);
+
+    for (const chip of roster.children) {
+      chip.classList.toggle("selectat", chemate.some((p) => p.id === chip.dataset.id));
+    }
+
+    indiciu.textContent = chemate.length
+      ? `Răspunde: ${numeChemate.join(", ")}`
+      : "Fără @mențiune răspunde tot consiliul, pe rând.";
+  }
+
+  // ---------- autocomplete pentru @ ----------
+
+  function tokenDeCompletat() {
+    const panaLaCursor = input.value.slice(0, input.selectionStart);
+    const potrivire = panaLaCursor.match(/@(\w*)$/);
+    if (!potrivire) return null;
+    return { prefix: potrivire[1], start: input.selectionStart - potrivire[0].length };
+  }
+
+  function inchideSugestiile() {
+    sugestii.hidden = true;
+    sugestii.textContent = "";
+  }
+
+  function alegeSugestia(personaj) {
+    const token = tokenDeCompletat();
+    if (!token) return;
+    const dupaCursor = input.value.slice(input.selectionStart);
+    const inainte = input.value.slice(0, token.start);
+    input.value = `${inainte}@${personaj.nume} ${dupaCursor}`;
+    const pozitie = inainte.length + personaj.nume.length + 2;
+    input.setSelectionRange(pozitie, pozitie);
+    inchideSugestiile();
+    input.focus();
+    actualizeazaIndiciu();
+  }
+
+  function actualizeazaSugestiile() {
+    const token = tokenDeCompletat();
+    if (!token) return inchideSugestiile();
+
+    const potrivite = personaje.filter((p) => p.nume.toLowerCase().startsWith(token.prefix.toLowerCase()));
+    if (!potrivite.length) return inchideSugestiile();
+
+    indexSugestie = Math.min(indexSugestie, potrivite.length - 1);
+    sugestii.textContent = "";
+    potrivite.forEach((personaj, i) => {
+      const rand = document.createElement("div");
+      rand.className = "sugestie" + (i === indexSugestie ? " activa" : "");
+      aplicaIdentitate(rand, personaj);
+
+      const nume = document.createElement("b");
+      nume.textContent = personaj.nume;
+      const rol = document.createElement("small");
+      rol.textContent = personaj.rol;
+
+      rand.append(creeazaAvatar(personaj), nume, rol);
+      rand.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        alegeSugestia(personaj);
+      });
+      sugestii.append(rand);
+    });
+    sugestii.hidden = false;
+    sugestii.dataset.potrivite = potrivite.map((p) => p.id).join(",");
+  }
+
+  input.addEventListener("input", () => {
+    indexSugestie = 0;
+    actualizeazaSugestiile();
+    actualizeazaIndiciu();
+  });
+
+  input.addEventListener("blur", inchideSugestiile);
+
+  input.addEventListener("keydown", (ev) => {
+    if (sugestii.hidden) return;
+    const ids = (sugestii.dataset.potrivite || "").split(",");
+
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      const pas = ev.key === "ArrowDown" ? 1 : -1;
+      indexSugestie = (indexSugestie + pas + ids.length) % ids.length;
+      actualizeazaSugestiile();
+    } else if (ev.key === "Enter" || ev.key === "Tab") {
+      ev.preventDefault();
+      alegeSugestia(personaje.find((p) => p.id === ids[indexSugestie]));
+    } else if (ev.key === "Escape") {
+      inchideSugestiile();
+    }
+  });
+
+  // ---------- pornire ----------
+
+  async function incarcaProfiluri() {
+    const raspuns = await fetch("/api/personaje");
+    const date = await raspuns.json();
+    personaje = date.personaje;
+    utilizator = date.utilizator;
+    deseneazaRoster();
+    actualizeazaIndiciu();
   }
 
   async function incarcaIstoric() {
     const raspuns = await fetch("/api/mesaje");
     const mesaje = await raspuns.json();
+
+    if (!mesaje.length) {
+      const gol = document.createElement("div");
+      gol.className = "gol";
+      gol.id = "gol";
+      gol.append(
+        "Consiliul așteaptă prima întrebare.",
+        document.createElement("br"),
+        "Scrie tuturor sau cheamă pe cineva anume cu @Nume."
+      );
+      conversatie.append(gol);
+      return;
+    }
+
     mesaje.forEach(adaugaMesaj);
+    laFinal();
   }
 
-  incarcaIstoric();
+  incarcaProfiluri().then(incarcaIstoric);
 
-  form.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const text = input.value.trim();
-    if (!text) return;
+  // ---------- runda de raspunsuri ----------
 
-    adaugaMesaj({ eu: true, nume: "Simona", avatar: "🙋", culoare: "#6c5ce7", text });
-    input.value = "";
-    input.disabled = true;
+  /** Citeste fluxul NDJSON si da inapoi cate un eveniment, cum vine de la server. */
+  async function* evenimente(corp) {
+    const reader = corp.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
-    const { avatarDiv, numeDiv, bulaDiv } = adaugaMesaj({
-      eu: false,
-      nume: "",
-      avatar: "💬",
-      culoare: "#ccc",
-      text: "...",
-    });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let capat;
+      while ((capat = buffer.indexOf("\n")) !== -1) {
+        const linie = buffer.slice(0, capat).trim();
+        buffer = buffer.slice(capat + 1);
+        if (linie) yield JSON.parse(linie);
+      }
+    }
+  }
+
+  async function ruleazaRunda(text) {
+    let curent = adaugaIndicator({ nume: "", avatar: "💬", culoare: "#ccc", culoareFundal: "#fff" });
+    let textCurent = "";
 
     try {
       const raspuns = await fetch("/api/mesaje", {
@@ -226,45 +645,57 @@
         body: JSON.stringify({ text }),
       });
 
-      const reader = raspuns.body.getReader();
-      const decoder = new TextDecoder();
-      let bufferMetadate = "";
-      let metadateCitite = false;
-      let continutInceput = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const bucata = decoder.decode(value, { stream: true });
-
-        if (!metadateCitite) {
-          bufferMetadate += bucata;
-          const indexNewline = bufferMetadate.indexOf("\n");
-          if (indexNewline === -1) continue;
-
-          const metadate = JSON.parse(bufferMetadate.slice(0, indexNewline));
-          avatarDiv.style.background = metadate.culoare;
-          avatarDiv.textContent = metadate.avatar;
-          numeDiv.textContent = metadate.nume;
-          metadateCitite = true;
-
-          const restul = bufferMetadate.slice(indexNewline + 1);
-          if (restul) {
-            bulaDiv.textContent = restul;
-            continutInceput = true;
-          }
+      for await (const eveniment of evenimente(raspuns.body)) {
+        if (eveniment.tip === "personaj") {
+          if (!curent) curent = adaugaIndicator(eveniment);
+          else completeazaIdentitatea(curent, eveniment);
+          textCurent = "";
           continue;
         }
 
-        if (!continutInceput) {
-          bulaDiv.textContent = "";
-          continutInceput = true;
+        if (!curent) continue;
+
+        if (eveniment.tip === "text") {
+          const eraJos = lipitDeFinal();
+          textCurent += eveniment.text;
+          scrieText(curent.bula, textCurent);
+          if (eraJos) laFinal();
+        } else if (eveniment.tip === "eroare") {
+          curent.bula.className = "bula eroare";
+          curent.bula.textContent = eveniment.text;
+          curent = null;
+        } else if (eveniment.tip === "gata") {
+          curent = null;
         }
-        bulaDiv.textContent += bucata;
-        main.scrollTop = main.scrollHeight;
       }
+    } catch (eroare) {
+      console.error(eroare);
+    }
+
+    // Daca fluxul s-a intrerupt inainte de primul cuvant, nu lasam punctele sa se invarta la infinit.
+    if (curent && !textCurent) {
+      curent.bula.className = "bula eroare";
+      curent.bula.textContent = "răspunsul s-a întrerupt — verifică dacă serverul și Ollama rulează";
+    }
+  }
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const text = input.value.trim();
+    if (!text || input.disabled) return;
+
+    adaugaMesaj({ ...utilizator, eu: true, text });
+    input.value = "";
+    inchideSugestiile();
+    actualizeazaIndiciu();
+    input.disabled = true;
+    buton.disabled = true;
+
+    try {
+      await ruleazaRunda(text);
     } finally {
       input.disabled = false;
+      buton.disabled = false;
       input.focus();
     }
   });

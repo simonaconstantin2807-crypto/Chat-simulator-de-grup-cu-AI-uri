@@ -45,10 +45,17 @@ def _curata_stream(bucati: Iterator[str], nume: str) -> Iterator[str]:
         yield bucata
 
 
-def _construieste_cerere(mesaj: str, sistem: str | None, temperatura: float | None) -> dict:
+def _construieste_cerere(
+    mesaj: str,
+    sistem: str | None,
+    temperatura: float | None,
+    context: list[dict] | None = None,
+) -> dict:
     mesaje = []
     if sistem:
         mesaje.append({"role": "system", "content": sistem})
+    # Istoricul intra intre system prompt si mesajul curent, ca modelul sa stie ce s-a discutat.
+    mesaje.extend(context or [])
     mesaje.append({"role": "user", "content": mesaj})
 
     # gemma4:e2b crapa la incarcarea pe GPU (bug CUDA cu driverul curent) - ruleaza pe CPU pana
@@ -77,8 +84,9 @@ def trimite_mesaj(
     model: str = MODEL_IMPLICIT,
     sistem: str | None = None,
     temperatura: float | None = None,
+    context: list[dict] | None = None,
 ) -> str:
-    cerere = _construieste_cerere(mesaj, sistem, temperatura)
+    cerere = _construieste_cerere(mesaj, sistem, temperatura, context)
     raspuns = ollama.chat(model=model, **cerere)
     return raspuns["message"]["content"]
 
@@ -89,8 +97,9 @@ def trimite_mesaj_stream(
     model: str = MODEL_IMPLICIT,
     sistem: str | None = None,
     temperatura: float | None = None,
+    context: list[dict] | None = None,
 ) -> Iterator[str]:
-    cerere = _construieste_cerere(mesaj, sistem, temperatura)
+    cerere = _construieste_cerere(mesaj, sistem, temperatura, context)
     stream = ollama.chat(model=model, stream=True, **cerere)
     bucati = (bucata["message"]["content"] for bucata in stream)
     yield from _curata_stream(bucati, nume_personaj)

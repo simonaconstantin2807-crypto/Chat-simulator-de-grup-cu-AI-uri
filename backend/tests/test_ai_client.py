@@ -39,6 +39,20 @@ def test_cererea_plafoneaza_lungimea_raspunsului():
     assert cerere["options"]["num_predict"] == MAX_TOKENI
 
 
+def test_cererea_pune_istoricul_intre_system_prompt_si_mesajul_curent():
+    context = [
+        {"role": "user", "content": "prima întrebare"},
+        {"role": "assistant", "content": "primul răspuns"},
+    ]
+
+    cerere = _construieste_cerere(
+        "a doua întrebare", sistem="Ești Maestra.", temperatura=None, context=context
+    )
+
+    assert [m["role"] for m in cerere["messages"]] == ["system", "user", "assistant", "user"]
+    assert cerere["messages"][-1]["content"] == "a doua întrebare"
+
+
 def test_cererea_opreste_gandirea_modelului():
     cerere = _construieste_cerere("Salut", sistem=None, temperatura=None)
 

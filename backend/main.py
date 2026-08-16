@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 import istoric
 from ai_client import preincarca, trimite_mesaj, trimite_mesaj_stream
-from personaje import incarca_personaje
+from personaje import alege_destinatarii, incarca_personaje, profil_public
 
 
 def incalzeste_modelul() -> None:
@@ -31,17 +31,38 @@ app = FastAPI(lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).parent / "static"
 PERSONAJE = incarca_personaje()
-istoric.init_db()
-
-# M3: un singur personaj raspunde, hardcodat. Orchestrarea intre toate cele 5 vine la M5.
-PERSONAJ_ACTIV = "maestra"
+istoric.init_stocare()
 
 # Fara cont/login (SPEC.md) - o singura utilizatoare hardcodata.
-UTILIZATOR = {"nume": "Simona", "avatar": "🙋", "culoare": "#6c5ce7"}
+UTILIZATOR = {
+    "id": "eu",
+    "nume": "Simona",
+    "rol": "Moderatoarea consiliului",
+    "avatar": "🙋",
+    "culoare": "#3D3A36",
+    "culoareFundal": "#3D3A36",
+}
 
 
 class MesajIntrare(BaseModel):
     text: str
+
+
+def _eveniment(date: dict) -> str:
+    """O linie NDJSON din fluxul de raspuns: pagina citeste linie cu linie, cat ii vine."""
+    return json.dumps(date, ensure_ascii=False) + "\n"
+
+
+def _mesaj_de_salvat(personaj: dict, text: str) -> dict:
+    return {
+        "eu": False,
+        "personajId": personaj["id"],
+        "nume": personaj["nume"],
+        "avatar": personaj["avatar"],
+        "culoare": personaj["culoare"],
+        "culoareFundal": personaj["culoareFundal"],
+        "text": text,
+    }
 
 
 @app.get("/")
@@ -55,6 +76,14 @@ def health():
     return {"status": "ok", "model_raspunde": bool(raspuns.strip())}
 
 
+@app.get("/api/personaje")
+def profilurile():
+    return {
+        "utilizator": UTILIZATOR,
+        "personaje": [profil_public(personaj) for personaj in PERSONAJE.values()],
+    }
+
+
 @app.get("/api/mesaje")
 def istoricul():
     return istoric.incarca_istoric()
@@ -62,27 +91,34 @@ def istoricul():
 
 @app.post("/api/mesaje")
 def trimite(mesaj: MesajIntrare):
-    personaj = PERSONAJE[PERSONAJ_ACTIV]
+    destinatari = alege_destinatarii(mesaj.text, PERSONAJE)
+
+    # Contextul se citeste inainte de prima replica: toti intra in runda cu acelasi istoric,
+    # deci nimeni nu aude ce a raspuns altcineva intre timp.
+    contexte = {id_personaj: istoric.context_pentru(id_personaj) for id_personaj in destinatari}
     istoric.salveaza_mesaj({**UTILIZATOR, "eu": True, "text": mesaj.text})
 
-    def raspuns_stream():
-        metadate = {"nume": personaj["nume"], "avatar": personaj["avatar"], "culoare": personaj["culoare"]}
-        yield json.dumps(metadate) + "\n"
+    def runda():
+        for id_personaj in destinatari:
+            personaj = PERSONAJE[id_personaj]
+            yield _eveniment({"tip": "personaj", **profil_public(personaj)})
 
-        text_complet = ""
-        try:
-            for bucata in trimite_mesaj_stream(
-                mesaj.text,
-                personaj["nume"],
-                sistem=personaj["systemPrompt"],
-                temperatura=personaj["temperaturaRecomandata"],
-            ):
-                text_complet += bucata
-                yield bucata
-        except Exception:
-            yield "\n[eroare: modelul nu a raspuns]"
-            return
+            text_complet = ""
+            try:
+                for bucata in trimite_mesaj_stream(
+                    mesaj.text,
+                    personaj["nume"],
+                    sistem=personaj["systemPrompt"],
+                    temperatura=personaj["temperaturaRecomandata"],
+                    context=contexte[id_personaj],
+                ):
+                    text_complet += bucata
+                    yield _eveniment({"tip": "text", "text": bucata})
+            except Exception:
+                yield _eveniment({"tip": "eroare", "text": "modelul nu a raspuns"})
+                continue
 
-        istoric.salveaza_mesaj({**metadate, "eu": False, "text": text_complet})
+            istoric.salveaza_mesaj(_mesaj_de_salvat(personaj, text_complet))
+            yield _eveniment({"tip": "gata"})
 
-    return StreamingResponse(raspuns_stream(), media_type="text/plain")
+    return StreamingResponse(runda(), media_type="application/x-ndjson")
