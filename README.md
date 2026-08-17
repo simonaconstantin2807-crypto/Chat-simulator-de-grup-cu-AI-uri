@@ -25,14 +25,14 @@ durează ~30s).
 
 ## Cum se folosește
 
-- Scrii un mesaj fără mențiune → răspunde tot consiliul, pe rând.
-- Scrii `@Nume` (sau apeși pe personajul din bara de sus) → răspunde sigur cine e chemat, iar
-  ceilalți își împart 20% șansa de a interveni neinvitați (vezi `PARTEA_NEMENTIONATILOR` din
-  `backend/personaje.py`). În medie, o intervenție la 5 mesaje.
-  În timp ce scrii `@`, apare lista cu personaje: săgeți + Enter sau click.
-- Dacă un personaj scrie `@Nume` în replica lui, cel chemat răspunde în aceeași rundă. Lanțul
-  se oprește după un val (`VALURI_MAXIME` din `backend/main.py`) și nimeni nu vorbește de două
-  ori în aceeași rundă.
+- La fiecare mesaj sunt întrebate toate personajele, dar răspunde doar cine are ceva de spus.
+  Cine n-are, scrie `PAS` — semnal care nu ajunge pe ecran și nu se salvează.
+- Scrii `@Nume` (sau apeși pe personajul din bara de sus) → cine e chemat **nu are voie să
+  tacă**. În timp ce scrii `@`, apare lista cu personaje: săgeți + Enter sau click.
+- Nemenționații își împart 20% șansa de a fi obligați să contribuie chiar dacă n-aveau nimic de
+  zis, ca discuția să nu se stingă (`PARTEA_NEMENTIONATILOR` din `backend/personaje.py`).
+- Dacă un personaj scrie `@Nume` în replica lui, cel chemat răspunde imediat după și pierde și
+  el dreptul de a tăcea. Nimeni nu vorbește de două ori în aceeași rundă.
 - Conversația se salvează în `backend/data/conversatie.json` și e tot acolo după refresh sau
   după repornirea serverului.
 
@@ -47,15 +47,18 @@ durează ~30s).
 
 Fluxul de la `POST /api/mesaje` are câte un obiect JSON pe linie:
 `{"tip":"personaj",...}` (cine începe să vorbească), `{"tip":"text","text":"..."}` (bucată de
-răspuns), `{"tip":"gata"}` (mesaj terminat), `{"tip":"eroare","text":"..."}`.
+răspuns), `{"tip":"gata"}` (mesaj terminat), `{"tip":"tace"}` (n-a avut ce adăuga — pagina
+scoate bula de pe ecran), `{"tip":"eroare","text":"..."}`.
 
 ## Memoria personajelor
 
-Fiecare personaj primește ultimele `MESAJE_IN_CONTEXT` mesaje (vezi `backend/istoric.py`):
-mesajele mele și propriile lui replici. **Nu** vede încă replicile celorlalte personaje.
+Fiecare personaj primește ultimele `MESAJE_IN_CONTEXT` mesaje (vezi `backend/istoric.py`) —
+toată discuția, inclusiv replicile celorlalți, care vin cu numele vorbitorului în față.
+Propriile replici rămân fără prefix, ca să nu învețe să-și semneze mesajele.
+
+Contextul se citește la rândul fiecăruia, nu la începutul rundei: al doilea vorbitor aude ce a
+zis primul și îi răspunde lui, nu neapărat mie.
 
 ## Ce rămâne pentru etapa următoare
 
-- Personajele se aud între ele (filtrul din `istoric.context_pentru`).
-- Logica de tură: cine vorbește și când.
 - Conversație emergentă — grupul prinde viață, de la „eu moderez" la „ele vorbesc singure".

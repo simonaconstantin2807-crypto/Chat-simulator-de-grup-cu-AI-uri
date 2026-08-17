@@ -7,6 +7,7 @@ from ai_client import (
     _construieste_cerere,
     _curata_stream,
     elimina_prefix_nume,
+    fara_pas,
     preincarca,
     trimite_mesaj,
     trimite_mesaj_stream,
@@ -118,3 +119,34 @@ def test_curata_stream_lasa_neschimbat_textul_fara_prefix():
     rezultat = "".join(_curata_stream(iter(bucati), "Maestra"))
 
     assert rezultat == "Bună ziua, cum sunteți azi?"
+
+
+def test_pasul_singur_nu_lasa_nimic_sa_treaca():
+    """Cine n-are ce adauga scrie doar PAS, iar PAS-ul nu trebuie sa ajunga pe ecran."""
+    assert list(fara_pas(iter(["PAS"]))) == []
+
+
+def test_pasul_e_recunoscut_cu_punctuatie_si_litere_mici():
+    assert list(fara_pas(iter(["Pas."]))) == []
+    assert list(fara_pas(iter(["  pas  "]))) == []
+
+
+def test_replica_normala_trece_intreaga():
+    bucati = ["Contează ", "codul ", "exact al mărgelei."]
+
+    assert "".join(fara_pas(iter(bucati))) == "Contează codul exact al mărgelei."
+
+
+def test_replica_care_incepe_cu_pas_nu_e_confundata():
+    """„Pas cu pas" e o replica adevarata, nu o abtinere."""
+    bucati = ["Pas", " cu pas", ", altfel iese prost."]
+
+    assert "".join(fara_pas(iter(bucati))) == "Pas cu pas, altfel iese prost."
+
+
+def test_pasul_impartit_pe_mai_multe_bucati_e_tot_pas():
+    assert list(fara_pas(iter(["P", "A", "S"]))) == []
+
+
+def test_raspunsul_gol_nu_produce_nimic():
+    assert list(fara_pas(iter([""]))) == []

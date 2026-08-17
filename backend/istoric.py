@@ -12,9 +12,11 @@ from pathlib import Path
 ISTORIC_PATH = Path(__file__).parent / "data" / "conversatie.json"
 
 # Cate mesaje din istoric primeste un personaj in prompt. Cu cat contextul e mai lung, cu atat
-# primul token intarzie mai mult pe un model local - 12 mesaje tin firul discutiei fara sa
-# umfle promptul la fiecare runda.
-MESAJE_IN_CONTEXT = 12
+# primul token intarzie mai mult pe un model local. Erau 12 cat timp un personaj isi vedea doar
+# propriile replici - o runda insemna 2 mesaje. De cand se aud intre ele, o runda de consiliu
+# intreg inseamna 6, deci 12 ar fi acoperit doua runde: prea putin ca sa poata comenta ceva zis
+# mai devreme. 24 tin vreo patru runde. Creste odata cu numarul de personaje.
+MESAJE_IN_CONTEXT = 24
 
 # Endpoint-urile FastAPI sincrone ruleaza pe fire diferite, iar salvarea e citeste-si-rescrie.
 _lacat = threading.Lock()
@@ -43,19 +45,28 @@ def salveaza_mesaj(mesaj: dict) -> None:
         )
 
 
+def _replica(mesaj: dict, personaj_id: str) -> dict:
+    """Un mesaj din istoric, vazut cu ochii personajului dat.
+
+    Modelul cunoaste doua roluri: `assistant` e propria lui voce, `user` e tot restul. Ce a
+    zis altcineva intra deci ca `user`, dar cu numele in fata - fara el, vocea mea si a
+    celorlalte personaje s-ar topi intr-una singura si n-ar sti cui raspunde. Propriile
+    replici raman curate: prefixul l-ar invata sa-si semneze mesajele.
+    """
+    if mesaj.get("personajId") == personaj_id:
+        return {"role": "assistant", "content": mesaj["text"]}
+    if mesaj.get("eu"):
+        return {"role": "user", "content": mesaj["text"]}
+
+    vorbitor = mesaj.get("nume") or mesaj.get("personajId", "Cineva")
+    return {"role": "user", "content": f"{vorbitor}: {mesaj['text']}"}
+
+
 def context_pentru(personaj_id: str, limita: int = MESAJE_IN_CONTEXT) -> list[dict]:
     """Ultimele mesaje pe care le primeste personajul in prompt, in formatul de chat al modelului.
 
-    Vede ce am scris eu si ce a raspuns el insusi mai devreme - nu si replicile celorlalte
-    personaje. Ca personajele sa se auda intre ele e nevoie si de o logica de tura (cine
-    vorbeste si cand), asa ca ramane pe etapa urmatoare; aici se schimba doar filtrul.
+    Vede toata discutia: ce am scris eu, ce a raspuns el si ce au zis ceilalti - altfel
+    regula "cele mai bune momente sunt cand contrazici pe altcineva" din system prompt-uri
+    n-are cum sa fie dusa la capat.
     """
-    relevante = [
-        mesaj
-        for mesaj in incarca_istoric()
-        if mesaj.get("eu") or mesaj.get("personajId") == personaj_id
-    ]
-    return [
-        {"role": "user" if mesaj.get("eu") else "assistant", "content": mesaj["text"]}
-        for mesaj in relevante[-limita:]
-    ]
+    return [_replica(mesaj, personaj_id) for mesaj in incarca_istoric()[-limita:]]

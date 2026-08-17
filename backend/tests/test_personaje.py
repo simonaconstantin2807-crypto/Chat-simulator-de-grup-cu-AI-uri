@@ -3,9 +3,10 @@ import random
 import pytest
 
 from personaje import (
-    alege_destinatarii,
     gaseste_mentiuni,
     incarca_personaje,
+    obligati_sa_raspunda,
+    ordinea_vorbitorilor,
     probabilitati,
     profil_public,
 )
@@ -55,6 +56,12 @@ def test_fiecare_stie_ca_poate_chema_pe_altcineva_cu_at():
     """Lantul de chemari nu porneste daca personajele nu stiu ca @Nume e o convocare."""
     for personaj in PERSONAJE.values():
         assert "@" in personaj["systemPrompt"], f"{personaj['nume']} nu stie de conventia @"
+
+
+def test_fiecare_stie_ca_poate_sa_taca(monkeypatch=None):
+    """Fara regula asta in prompt, nimeni nu scrie PAS si toti raspund la orice."""
+    for personaj in PERSONAJE.values():
+        assert "PAS" in personaj["systemPrompt"], f"{personaj['nume']} nu stie sa taca"
 
 
 def test_vocile_sunt_diferite_prin_temperatura():
@@ -137,43 +144,48 @@ def test_toti_mentionati_nu_lasa_pe_nimeni_de_tras_la_sorti():
     assert all(sansa == 1.0 for sansa in sanse.values())
 
 
-def test_fara_mentiune_raspunde_tot_consiliul():
-    assert alege_destinatarii("Cum arătăm prețurile?", PERSONAJE) == list(PERSONAJE)
+def test_toti_sunt_intrebati_mentionatii_primii():
+    """Chat natural: fiecare cantareste daca are ceva de zis, deci fiecare e intrebat."""
+    ordine = ordinea_vorbitorilor("@Clienta și @Maestra, ce ziceți?", PERSONAJE)
+
+    assert ordine[:2] == ["clienta", "maestra"]
+    assert set(ordine) == set(PERSONAJE)
 
 
-def test_mentionatul_raspunde_chiar_daca_sortii_cad_prost():
+def test_fara_mentiune_ordinea_e_cea_din_fisier():
+    assert ordinea_vorbitorilor("Cum arătăm prețurile?", PERSONAJE) == list(PERSONAJE)
+
+
+def test_mentionatul_e_obligat_chiar_daca_sortii_cad_prost():
     """Mentiunea nu e o sansa, e o convocare - restul pierd toate cele patru aruncari."""
-    destinatari = alege_destinatarii(
+    obligati = obligati_sa_raspunda(
         "@Programatorul e fezabil?", PERSONAJE, sansa=_sorti(1.0, 1.0, 1.0, 1.0)
     )
 
-    assert destinatari == ["programatorul"]
+    assert obligati == ["programatorul"]
 
 
-def test_nementionatul_intra_daca_trece_aruncarea():
-    """Aruncarile merg in ordinea din personaje.json; prima o castiga Antreprenoarea."""
-    destinatari = alege_destinatarii(
+def test_tacutul_care_castiga_aruncarea_e_obligat_sa_contribuie():
+    """Asa nimeni nu e pus sa vorbeasca dupa ce tocmai a zis ca n-are nimic de adaugat."""
+    obligati = obligati_sa_raspunda(
         "@Programatorul e fezabil?", PERSONAJE, sansa=_sorti(0.0, 1.0, 1.0, 1.0)
     )
 
-    assert destinatari == ["programatorul", "antreprenoarea"]
+    assert obligati == ["programatorul", "antreprenoarea"]
 
 
-def test_intrusii_vin_dupa_cei_chemati():
-    destinatari = alege_destinatarii(
-        "@Clienta și @Maestra, ce ziceți?", PERSONAJE, sansa=_sorti(1.0, 0.0, 1.0)
-    )
-
-    assert destinatari == ["clienta", "maestra", "operatoarea"]
+def test_fara_mentiune_nimeni_nu_e_obligat():
+    """Nu exista grup chemat, deci fiecare decide singur daca are ceva de spus."""
+    assert obligati_sa_raspunda("Cum arătăm prețurile?", PERSONAJE, sansa=_sorti(0.0)) == []
 
 
 def test_pe_termen_lung_intrusii_aduc_o_cincime_de_replica():
-    """Cei 20% se vad la mia de runde: in medie 0.2 intrusi peste cei chemati."""
+    """Cei 20% se vad la mia de runde: in medie 0.2 obligati peste cei chemati."""
     zaruri = random.Random(2026).random
     intrusi = 0
 
     for _ in range(1000):
-        destinatari = alege_destinatarii("@Maestra ce zici?", PERSONAJE, sansa=zaruri)
-        intrusi += len(destinatari) - 1
+        obligati = obligati_sa_raspunda("@Maestra ce zici?", PERSONAJE, sansa=zaruri)
+        intrusi += len(obligati) - 1
 
     assert 0.17 < intrusi / 1000 < 0.23

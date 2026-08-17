@@ -9,12 +9,20 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import istoric
-from ai_client import preincarca, trimite_mesaj, trimite_mesaj_stream
-from personaje import alege_destinatarii, gaseste_mentiuni, incarca_personaje, profil_public
+from ai_client import fara_pas, preincarca, trimite_mesaj, trimite_mesaj_stream
+from personaje import (
+    gaseste_mentiuni,
+    incarca_personaje,
+    obligati_sa_raspunda,
+    ordinea_vorbitorilor,
+    profil_public,
+)
 
-# Mesajul meu deschide valul 1; cine e chemat cu @ dintr-o replica raspunde in valul 2, si
-# acolo ne oprim - fara plafon, doua personaje care se invoca reciproc ar tine runda la infinit.
-VALURI_MAXIME = 2
+# Se adauga la system prompt-ul celor care nu pot sa taca: cei chemati pe nume si cei carora
+# le-a iesit aruncarea. Restul isi pastreaza dreptul de a scrie PAS.
+INDEMN_OBLIGAT = (
+    "\n\nAcum e rândul tău și nu poți să taci: scrie o replică scurtă, nu PAS."
+)
 
 # Aruncarea cu banul pentru cei nementionati, scoasa la nivel de modul ca testele s-o poata fixa.
 zaruri = random.random
@@ -99,53 +107,66 @@ def istoricul():
 
 @app.post("/api/mesaje")
 def trimite(mesaj: MesajIntrare):
-    destinatari = alege_destinatarii(mesaj.text, PERSONAJE, sansa=zaruri)
+    coada = ordinea_vorbitorilor(mesaj.text, PERSONAJE)
+    obligati = set(obligati_sa_raspunda(mesaj.text, PERSONAJE, sansa=zaruri))
 
-    # Contextul se citeste inainte de prima replica: toti intra in runda cu acelasi istoric,
-    # deci nimeni nu aude ce a raspuns altcineva intre timp. Se citeste pentru tot consiliul,
-    # nu doar pentru destinatari, fiindca o chemare din valul 2 poate aduce pe oricine.
-    contexte = {id_personaj: istoric.context_pentru(id_personaj) for id_personaj in PERSONAJE}
     istoric.salveaza_mesaj({**UTILIZATOR, "eu": True, "text": mesaj.text})
 
     def runda():
-        # Fiecare intrare: cine vorbeste, la ce raspunde si in al catelea val e.
-        coada = [(id_personaj, mesaj.text, 1) for id_personaj in destinatari]
         au_vorbit = set()
 
         while coada:
-            id_personaj, intrebare, val = coada.pop(0)
+            id_personaj = coada.pop(0)
             if id_personaj in au_vorbit:
                 continue
             au_vorbit.add(id_personaj)
-
             personaj = PERSONAJE[id_personaj]
+
+            # Contextul se citeste abia acum, nu la inceputul rundei: asa fiecare aude ce s-a
+            # zis inaintea lui. Ultimul mesaj din el e replica la care raspunde, deci iese din
+            # context si intra ca intrebare curenta.
+            context = istoric.context_pentru(id_personaj)
+            intrebare = context.pop()["content"] if context else mesaj.text
+
             yield _eveniment({"tip": "personaj", **profil_public(personaj)})
+
+            sistem = personaj["systemPrompt"]
+            if id_personaj in obligati:
+                sistem += INDEMN_OBLIGAT
 
             text_complet = ""
             try:
-                for bucata in trimite_mesaj_stream(
+                bucati = trimite_mesaj_stream(
                     intrebare,
                     personaj["nume"],
-                    sistem=personaj["systemPrompt"],
+                    sistem=sistem,
                     temperatura=personaj["temperaturaRecomandata"],
-                    context=contexte[id_personaj],
-                ):
+                    context=context,
+                )
+                # `fara_pas` inghite raspunsul celui care n-are nimic de adaugat, deci un text
+                # gol aici inseamna "a ales sa taca", nu "a raspuns cu nimic".
+                for bucata in fara_pas(bucati):
                     text_complet += bucata
                     yield _eveniment({"tip": "text", "text": bucata})
             except Exception:
                 yield _eveniment({"tip": "eroare", "text": "modelul nu a raspuns"})
                 continue
 
+            if not text_complet.strip():
+                yield _eveniment({"tip": "tace"})
+                continue
+
             istoric.salveaza_mesaj(_mesaj_de_salvat(personaj, text_complet))
             yield _eveniment({"tip": "gata"})
 
-            if val < VALURI_MAXIME:
-                # Cine e chemat pe nume raspunde, chiar daca vine de la un personaj, nu de la
-                # mine; primeste replica care l-a chemat, cu autor, ca sa stie la ce raspunde.
-                replica = f"{personaj['nume']}: {text_complet}"
-                asteptati = {chemat for chemat, _, _ in coada}
-                for chemat in gaseste_mentiuni(text_complet, PERSONAJE):
-                    if chemat not in au_vorbit and chemat not in asteptati:
-                        coada.append((chemat, replica, val + 1))
+            # Cine e chemat pe nume raspunde, chiar daca chemarea vine de la un personaj, nu de
+            # la mine: trece in fata cozii si pierde dreptul de a tacea.
+            for pas, chemat in enumerate(gaseste_mentiuni(text_complet, PERSONAJE)):
+                if chemat in au_vorbit:
+                    continue
+                if chemat in coada:
+                    coada.remove(chemat)
+                coada.insert(pas, chemat)
+                obligati.add(chemat)
 
     return StreamingResponse(runda(), media_type="application/x-ndjson")

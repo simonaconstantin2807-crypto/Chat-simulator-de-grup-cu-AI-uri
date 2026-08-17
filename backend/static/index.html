@@ -665,6 +665,10 @@
           curent.bula.className = "bula eroare";
           curent.bula.textContent = eveniment.text;
           curent = null;
+        } else if (eveniment.tip === "tace") {
+          // N-a avut ce adauga. Bula de "scrie..." apucase sa apara, deci o luam de pe ecran.
+          curent.element.remove();
+          curent = null;
         } else if (eveniment.tip === "gata") {
           curent = null;
         }

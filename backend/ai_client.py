@@ -19,6 +19,38 @@ GANDIRE = False
 MAX_TOKENI = 200
 
 
+# Cuvantul prin care un personaj spune ca n-are nimic de adaugat. Nu ajunge niciodata pe ecran:
+# tacerea lui e raspunsul. Regula e in system prompt-uri, in personaje.json.
+SEMNAL_PAS = "PAS"
+
+
+def este_pas(text: str) -> bool:
+    return text.strip().strip(".!…").upper() == SEMNAL_PAS
+
+
+def fara_pas(bucati: Iterator[str]) -> Iterator[str]:
+    """Retine inceputul raspunsului cat sa distinga o abtinere de o replica adevarata.
+
+    Cat timp textul strans ar putea fi inca doar `PAS`, nu iese nimic. La prima litera in
+    plus ("Pas cu pas...") se elibereaza tot si restul curge normal, ca sa nu se piarda
+    efectul de scriere in timp real.
+    """
+    retinut = ""
+    for bucata in bucati:
+        retinut += bucata
+        # Punctuatia nu conteaza la numaratoare: "Pas." e tot o abtinere, "Pas cu" nu mai e.
+        if len(retinut.strip().strip(".!…")) > len(SEMNAL_PAS):
+            yield retinut
+            break
+    else:
+        if retinut.strip() and not este_pas(retinut):
+            yield retinut
+        return
+
+    for bucata in bucati:
+        yield bucata
+
+
 def elimina_prefix_nume(text: str, nume: str) -> str:
     prefix = f"{nume}:"
     if text.strip().lower().startswith(prefix.lower()):

@@ -90,8 +90,24 @@ convoacă tot consiliul, ca la M5.
 În plus, `@` scris de un personaj cheamă la fel ca `@` scris de mine: cel chemat răspunde în
 aceeași rundă, la replica ce l-a chemat. Un singur val de lanț, nimeni de două ori pe rundă.
 
-Aruncarea cu banul e injectată (`alege_destinatarii(..., sansa=)` și `main.zaruri`), ca testele
-să fie deterministe.
+Aruncarea cu banul e injectată (`obligati_sa_raspunda(..., sansa=)` și `main.zaruri`), ca
+testele să fie deterministe.
+
+## M8 — Chat natural: memorie comună și dreptul de a tăcea
+
+Personajele se aud între ele: `context_pentru` nu mai filtrează nimic, iar replicile altora
+intră cu numele vorbitorului în față, ca să nu se topească toate vocile într-una. Fereastra
+urcă de la 12 la 24 de mesaje — o rundă de consiliu întreg produce acum 6 mesaje, nu 2.
+
+Contextul se citește la rândul fiecăruia, nu la începutul rundei, deci al doilea vorbitor aude
+ce a zis primul. Fiecare răspunde ultimei replici din chat.
+
+Nu mai răspund toți la orice: fiecare e întrebat și scrie `PAS` dacă n-are ce adăuga, iar
+serverul îi înghite tăcerea. Cei chemați cu `@` și cei cărora le iese aruncarea de 20% nu au
+voie să tacă — primesc `INDEMN_OBLIGAT` în plus la system prompt.
+
+Costul, asumat: un mesaj cu o singură mențiune înseamnă acum un apel la model pentru fiecare
+personaj, nu unul singur. Tăcerea nu se poate afla fără să întrebi.
 
 ## Definiția de „gata"
 
@@ -109,6 +125,6 @@ să fie deterministe.
 Fără cont/login (dacă apare vreodată nevoia, e o decizie separată — vezi disputa rezolvată în
 `personaj-programatorul.md`). Fără RAG, fără tool calling, fără căutare live în
 `concept-aplicatie-miyuki.md` — cunoștințele personajelor sunt cele din system prompt-urile
-lor, atât. Fără orchestrare „deșteaptă" în sensul tare (personajele citind runda și decizând
-singure dacă au ceva de adăugat) — la M7 avem regula de mențiuni plus șansa de intervenție, nu
-o decizie luată de model.
+lor, atât. Orchestrarea „deșteaptă" — personajele decizând singure dacă au ceva de adăugat —
+a intrat la M8, dar în forma ei simplă: fiecare decide pentru el, prin `PAS`. Fără arbitru care
+citește runda și împarte cuvântul, fără ca personajele să scrie nechemate, între mesajele mele.
