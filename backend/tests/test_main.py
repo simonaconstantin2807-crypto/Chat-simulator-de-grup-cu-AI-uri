@@ -15,6 +15,15 @@ def _istoric_izolat(monkeypatch, tmp_path):
     istoric.init_stocare()
 
 
+def _zaruri(monkeypatch, *valori: float):
+    """Fixeaza aruncarile pentru tacuti: 1.0 nu intra nimeni, 0.0 intra primul de pe lista.
+
+    Dupa valorile date, restul aruncarilor pica pe 1.0 - deci fara alte intrari nedorite.
+    """
+    ramase = list(valori)
+    monkeypatch.setattr(main, "zaruri", lambda: ramase.pop(0) if ramase else 1.0)
+
+
 def _model_fals(monkeypatch):
     """Inlocuieste modelul, ca testele de rutare sa nu astepte cinci generari reale."""
     cereri = []
@@ -97,6 +106,7 @@ def test_fara_mentiune_raspunde_tot_consiliul(monkeypatch, tmp_path):
 
 def test_mentiunea_alege_cine_raspunde(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
     _model_fals(monkeypatch)
 
     evenimente = _evenimente("@Operatoarea câte grame ies dintr-un tub?")
@@ -106,6 +116,7 @@ def test_mentiunea_alege_cine_raspunde(monkeypatch, tmp_path):
 
 def test_mai_multe_mentiuni_raspund_in_ordinea_scrierii(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
     _model_fals(monkeypatch)
 
     evenimente = _evenimente("@Clienta și @Maestra, ce ziceți?")
@@ -113,8 +124,76 @@ def test_mai_multe_mentiuni_raspund_in_ordinea_scrierii(monkeypatch, tmp_path):
     assert _vorbitori(evenimente) == ["clienta", "maestra"]
 
 
+def test_tacutul_caruia_i_iese_aruncarea_se_baga_dupa_cei_chemati(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch, 0.0, 1.0, 1.0, 1.0)  # castiga primul tacut din personaje.json
+    _model_fals(monkeypatch)
+
+    evenimente = _evenimente("@Operatoarea câte grame ies dintr-un tub?")
+
+    assert _vorbitori(evenimente) == ["operatoarea", "antreprenoarea"]
+
+
+def _model_care_cheama(monkeypatch, chemari: dict[str, str]):
+    """Model fals in care unele personaje cheama pe altcineva cu @ in replica lor."""
+    cereri = []
+
+    def raspunde(mesaj, nume_personaj, sistem=None, temperatura=None, context=None):
+        cereri.append({"mesaj": mesaj, "nume": nume_personaj})
+        yield chemari.get(nume_personaj, f"replica {nume_personaj}")
+
+    monkeypatch.setattr(main, "trimite_mesaj_stream", raspunde)
+    return cereri
+
+
+def test_personajul_chemat_de_altul_raspunde_in_aceeasi_runda(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_care_cheama(monkeypatch, {"Maestra": "aici întreab-o pe @Clienta"})
+
+    evenimente = _evenimente("@Maestra ce zici de AB?")
+
+    assert _vorbitori(evenimente) == ["maestra", "clienta"]
+
+
+def test_cel_chemat_raspunde_replicii_care_l_a_chemat(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    cereri = _model_care_cheama(monkeypatch, {"Maestra": "aici întreab-o pe @Clienta"})
+
+    _evenimente("@Maestra ce zici de AB?")
+
+    assert cereri[-1]["nume"] == "Clienta"
+    assert cereri[-1]["mesaj"] == "Maestra: aici întreab-o pe @Clienta"
+
+
+def test_lantul_de_chemari_se_opreste_dupa_un_val(monkeypatch, tmp_path):
+    """Altfel doua personaje care se invoca reciproc tin runda la nesfarsit."""
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_care_cheama(
+        monkeypatch,
+        {"Maestra": "hai @Clienta", "Clienta": "și @Operatoarea, și @Programatorul"},
+    )
+
+    evenimente = _evenimente("@Maestra ce zici de AB?")
+
+    assert _vorbitori(evenimente) == ["maestra", "clienta"]
+
+
+def test_nimeni_nu_vorbeste_de_doua_ori_in_aceeasi_runda(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_care_cheama(monkeypatch, {"Maestra": "de acord cu @Clienta și @Maestra"})
+
+    evenimente = _evenimente("@Maestra și @Clienta, ce ziceți?")
+
+    assert _vorbitori(evenimente) == ["maestra", "clienta"]
+
+
 def test_evenimentul_de_personaj_poarta_identitatea_lui(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
     _model_fals(monkeypatch)
 
     evenimente = _evenimente("@Maestra ce zici de AB?")
@@ -126,6 +205,7 @@ def test_evenimentul_de_personaj_poarta_identitatea_lui(monkeypatch, tmp_path):
 
 def test_runda_se_salveaza_cu_id_de_personaj(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
     _model_fals(monkeypatch)
 
     _evenimente("@Maestra ce zici de AB?")
@@ -145,6 +225,7 @@ def test_runda_se_salveaza_cu_id_de_personaj(monkeypatch, tmp_path):
 
 def test_personajul_primeste_istoricul_conversatiei(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
     cereri = _model_fals(monkeypatch)
 
     _evenimente("@Maestra prima întrebare")
@@ -159,6 +240,7 @@ def test_personajul_primeste_istoricul_conversatiei(monkeypatch, tmp_path):
 def test_personajele_nu_aud_replicile_celorlalti(monkeypatch, tmp_path):
     """Ramane pe etapa urmatoare, impreuna cu logica de tura."""
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
     cereri = _model_fals(monkeypatch)
 
     _evenimente("Prima rundă, toată lumea")
@@ -174,6 +256,7 @@ def test_personajele_nu_aud_replicile_celorlalti(monkeypatch, tmp_path):
 
 def test_eroarea_unui_personaj_nu_opreste_runda(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
 
     def raspunde(mesaj, nume_personaj, sistem=None, temperatura=None, context=None):
         if nume_personaj == "Clienta":
@@ -190,6 +273,7 @@ def test_eroarea_unui_personaj_nu_opreste_runda(monkeypatch, tmp_path):
 
 def test_raspunsul_real_al_modelului_ajunge_bucata_cu_bucata(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
 
     evenimente = _evenimente("@Maestra ce părere ai despre AB simulat pe poză?")
     bucati = [e["text"] for e in evenimente if e["tip"] == "text"]

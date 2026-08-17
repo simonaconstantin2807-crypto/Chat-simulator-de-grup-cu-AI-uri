@@ -491,8 +491,9 @@
       chip.classList.toggle("selectat", chemate.some((p) => p.id === chip.dataset.id));
     }
 
+    // Cei chemati raspund sigur, dar oricare dintre ceilalti poate interveni neinvitat.
     indiciu.textContent = chemate.length
-      ? `Răspunde: ${numeChemate.join(", ")}`
+      ? `Răspunde sigur: ${numeChemate.join(", ")} — restul, doar dacă au ceva de zis.`
       : "Fără @mențiune răspunde tot consiliul, pe rând.";
   }
 

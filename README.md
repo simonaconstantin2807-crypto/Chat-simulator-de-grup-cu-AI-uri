@@ -26,8 +26,13 @@ durează ~30s).
 ## Cum se folosește
 
 - Scrii un mesaj fără mențiune → răspunde tot consiliul, pe rând.
-- Scrii `@Nume` (sau apeși pe personajul din bara de sus) → răspunde doar cine e chemat.
+- Scrii `@Nume` (sau apeși pe personajul din bara de sus) → răspunde sigur cine e chemat, iar
+  ceilalți își împart 20% șansa de a interveni neinvitați (vezi `PARTEA_NEMENTIONATILOR` din
+  `backend/personaje.py`). În medie, o intervenție la 5 mesaje.
   În timp ce scrii `@`, apare lista cu personaje: săgeți + Enter sau click.
+- Dacă un personaj scrie `@Nume` în replica lui, cel chemat răspunde în aceeași rundă. Lanțul
+  se oprește după un val (`VALURI_MAXIME` din `backend/main.py`) și nimeni nu vorbește de două
+  ori în aceeași rundă.
 - Conversația se salvează în `backend/data/conversatie.json` și e tot acolo după refresh sau
   după repornirea serverului.
 

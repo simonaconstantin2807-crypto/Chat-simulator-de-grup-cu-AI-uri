@@ -73,12 +73,25 @@ toate cele 5. Personajele văd ce a zis grupul până acum, nu doar ce am scris 
 
 Regula de mențiuni e soluția minimă pentru această fază, nu decizia finală — o orchestrare mai
 inteligentă (ex. personajele decid singure dacă au ceva de adăugat) rămâne de discutat într-o
-etapă ulterioară a MVP-ului.
+etapă ulterioară a MVP-ului. **Depășit de M7.**
 
 ## M6 — Memorie și polish
 
 Conversația supraviețuiește la refresh. Pot scrie oricând, chiar peste un personaj care încă
 „scrie" — runda în curs se anulează curat, nu se suprapun răspunsuri. Responsive pe telefon.
+
+## M7 — Cine răspunde: 80% chemații, 20% restul
+
+Mențiunea devine o convocare sigură, nu doar un filtru: cine e chemat cu `@` răspunde
+întotdeauna, iar nemenționații își împart 20% șansa de a interveni neinvitați — împărțită egal
+la câți sunt, ca procentul să rămână valid când consiliul crește. Fără nicio mențiune, se
+convoacă tot consiliul, ca la M5.
+
+În plus, `@` scris de un personaj cheamă la fel ca `@` scris de mine: cel chemat răspunde în
+aceeași rundă, la replica ce l-a chemat. Un singur val de lanț, nimeni de două ori pe rundă.
+
+Aruncarea cu banul e injectată (`alege_destinatarii(..., sansa=)` și `main.zaruri`), ca testele
+să fie deterministe.
 
 ## Definiția de „gata"
 
@@ -96,6 +109,6 @@ Conversația supraviețuiește la refresh. Pot scrie oricând, chiar peste un pe
 Fără cont/login (dacă apare vreodată nevoia, e o decizie separată — vezi disputa rezolvată în
 `personaj-programatorul.md`). Fără RAG, fără tool calling, fără căutare live în
 `concept-aplicatie-miyuki.md` — cunoștințele personajelor sunt cele din system prompt-urile
-lor, atât. Fără orchestrare „deșteaptă" (personajele decizând singure cine răspunde) — la M5
-rămânem la regula simplă de mențiuni `@NumePersonaj`, urmează să fie rediscutată într-o etapă
-viitoare.
+lor, atât. Fără orchestrare „deșteaptă" în sensul tare (personajele citind runda și decizând
+singure dacă au ceva de adăugat) — la M7 avem regula de mențiuni plus șansa de intervenție, nu
+o decizie luată de model.
