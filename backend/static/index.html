@@ -23,7 +23,139 @@
     color: var(--text);
     height: 100vh;
     display: flex;
+  }
+
+  /* Coloana de chat ramane exact cum era; panoul de conversatii sta langa ea, nu peste ea. */
+  .coloana {
+    flex: 1;
+    min-width: 0;
+    display: flex;
     flex-direction: column;
+  }
+
+  aside {
+    width: 250px;
+    min-width: 250px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cap-panou {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 12px 10px 16px;
+  }
+
+  .cap-panou h2 {
+    flex: 1;
+    margin: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .buton-mic {
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .buton-mic:hover { border-color: var(--cerneala); }
+
+  .lista-conversatii {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .conversatie {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 6px 8px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+
+  .conversatie:hover { background: var(--bg); }
+
+  .conversatie.activa {
+    background: var(--bg);
+    border-left-color: var(--cerneala);
+  }
+
+  .conversatie .nume-conversatie {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .conversatie.activa .nume-conversatie { font-weight: 600; }
+  .conversatie .nenumita { color: var(--muted); font-style: italic; }
+
+  .conversatie .numar {
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .actiuni { display: none; gap: 2px; }
+  .conversatie:hover .actiuni, .conversatie.activa .actiuni { display: flex; }
+
+  .actiuni button {
+    padding: 2px 4px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.55;
+  }
+
+  .actiuni button:hover { opacity: 1; background: var(--border); }
+
+  .editare {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 6px;
+    font: inherit;
+    font-size: 0.85rem;
+    border: 1px solid var(--cerneala);
+    border-radius: 6px;
+  }
+
+  .editare:focus { outline: none; }
+
+  .scrim { display: none; }
+
+  .buton-panou {
+    display: none;
+    padding: 4px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
   }
 
   header {
@@ -34,11 +166,18 @@
   .titlu {
     padding: 14px 24px 10px;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 10px;
     max-width: 760px;
     width: 100%;
     margin: 0 auto;
+  }
+
+  .titlu .text {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
   }
 
   .titlu h1 {
@@ -49,6 +188,9 @@
   .titlu .subtitlu {
     font-size: 0.85rem;
     color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .roster {
@@ -289,9 +431,40 @@
   .sugestie small { color: var(--muted); }
   .sugestie.activa { background: var(--fundal); }
 
+  /* Sub 900px nu mai incape o a doua coloana fara sa strice latimea bulelor, asa ca panoul
+     devine sertar peste conversatie: se deschide din butonul din header si se inchide la
+     alegerea unei conversatii. Layout-ul de chat ramane neatins, exact ca inainte. */
+  @media (max-width: 899px) {
+    aside {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 20;
+      transform: translateX(-100%);
+      transition: transform 0.18s ease;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.16);
+    }
+
+    body.panou-deschis aside { transform: none; }
+
+    body.panou-deschis .scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 15;
+      background: rgba(0, 0, 0, 0.32);
+    }
+
+    .buton-panou { display: block; }
+
+    /* Pe ecran mic nu exista hover, deci butoanele de redenumit si sters stau mereu la vedere. */
+    .actiuni { display: flex; }
+  }
+
   @media (max-width: 600px) {
     .titlu, .roster { padding-left: 14px; padding-right: 14px; }
-    .titlu { flex-direction: column; gap: 2px; }
+    .titlu .text { flex-direction: column; align-items: flex-start; gap: 2px; }
     .chip .eticheta small { display: none; }
     main { padding: 14px; }
     .continut { max-width: 82%; }
@@ -302,29 +475,49 @@
 </head>
 <body>
 
-<header>
-  <div class="titlu">
-    <h1>Consiliul CoSiMa</h1>
-    <span class="subtitlu">scrie <b>@Nume</b> ca să întrebi pe cineva anume</span>
+<aside>
+  <div class="cap-panou">
+    <h2>Conversații</h2>
+    <button type="button" class="buton-mic" id="buton-conversatie-noua">+ Nouă</button>
   </div>
-  <div class="roster" id="roster"></div>
-</header>
+  <div class="lista-conversatii" id="lista-conversatii"></div>
+</aside>
 
-<main id="conversatie"></main>
+<div class="scrim" id="scrim"></div>
 
-<footer>
-  <div class="zona-input">
-    <div class="sugestii" id="sugestii" hidden></div>
-    <form id="form-mesaj">
-      <input type="text" id="input-mesaj" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
-      <button type="submit">Trimite</button>
-    </form>
-    <div class="indiciu" id="indiciu"></div>
-  </div>
-</footer>
+<div class="coloana">
+  <header>
+    <div class="titlu">
+      <button type="button" class="buton-panou" id="buton-panou" aria-label="Lista de conversații">☰</button>
+      <div class="text">
+        <h1>Consiliul CoSiMa</h1>
+        <span class="subtitlu" id="subtitlu"></span>
+      </div>
+    </div>
+    <div class="roster" id="roster"></div>
+  </header>
+
+  <main id="conversatie"></main>
+
+  <footer>
+    <div class="zona-input">
+      <div class="sugestii" id="sugestii" hidden></div>
+      <form id="form-mesaj">
+        <input type="text" id="input-mesaj" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
+        <button type="submit">Trimite</button>
+      </form>
+      <div class="indiciu" id="indiciu"></div>
+    </div>
+  </footer>
+</div>
 
 <script>
   const conversatie = document.getElementById("conversatie");
+  const listaConversatii = document.getElementById("lista-conversatii");
+  const subtitlu = document.getElementById("subtitlu");
+  const scrim = document.getElementById("scrim");
+  const butonPanou = document.getElementById("buton-panou");
+  const butonNoua = document.getElementById("buton-conversatie-noua");
   const roster = document.getElementById("roster");
   const sugestii = document.getElementById("sugestii");
   const indiciu = document.getElementById("indiciu");
@@ -336,6 +529,161 @@
   let indexSugestie = 0;
   // Frana rundei in curs: scriu peste ea oricand, fara sa astept consiliul.
   let rundaCurenta = null;
+
+  let conversatii = [];
+  let conversatieActiva = null;
+
+  // Conversatia deschisa se tine in browser, nu pe server: nu exista cont, iar serverul n-are
+  // de unde sti in care dintre ele ma uit. La refresh ma intorc unde eram; daca intre timp a
+  // fost stearsa, cad pe cea mai recenta.
+  const CHEIE_ACTIVA = "consiliu.conversatieActiva";
+  const TITLU_NENUMITA = "Conversație nouă";
+
+  // ---------- conversatii ----------
+
+  function deschidePanou(deschis) {
+    document.body.classList.toggle("panou-deschis", deschis);
+  }
+
+  function titluAfisat(c) {
+    return c.titlu || TITLU_NENUMITA;
+  }
+
+  function actualizeazaSubtitlul() {
+    const activa = conversatii.find((c) => c.id === conversatieActiva);
+    subtitlu.textContent = activa ? titluAfisat(activa) : "";
+  }
+
+  function butonActiune(semn, titlu, actiune) {
+    const buton = document.createElement("button");
+    buton.type = "button";
+    buton.textContent = semn;
+    buton.title = titlu;
+    buton.addEventListener("click", (ev) => {
+      ev.stopPropagation(); // altfel apasarea pe buton ar si deschide conversatia
+      actiune();
+    });
+    return buton;
+  }
+
+  function deseneazaConversatii() {
+    listaConversatii.textContent = "";
+    for (const c of conversatii) {
+      const rand = document.createElement("div");
+      rand.className = "conversatie" + (c.id === conversatieActiva ? " activa" : "");
+
+      const nume = document.createElement("span");
+      nume.className = "nume-conversatie" + (c.titlu ? "" : " nenumita");
+      nume.textContent = titluAfisat(c);
+
+      const numar = document.createElement("span");
+      numar.className = "numar";
+      numar.textContent = c.numarMesaje || "";
+
+      const actiuni = document.createElement("div");
+      actiuni.className = "actiuni";
+      actiuni.append(
+        butonActiune("✏️", "Redenumește", () => editeazaTitlul(c, nume)),
+        butonActiune("🗑️", "Șterge", () => stergeConversatia(c))
+      );
+
+      rand.append(nume, numar, actiuni);
+      rand.addEventListener("click", () => deschideConversatia(c.id));
+      listaConversatii.append(rand);
+    }
+  }
+
+  async function incarcaConversatii() {
+    conversatii = await (await fetch("/api/conversatii")).json();
+    if (!conversatii.some((c) => c.id === conversatieActiva)) {
+      conversatieActiva = conversatii[0]?.id || null;
+      localStorage.setItem(CHEIE_ACTIVA, conversatieActiva || "");
+    }
+    deseneazaConversatii();
+    actualizeazaSubtitlul();
+  }
+
+  async function deschideConversatia(id) {
+    deschidePanou(false);
+    if (id === conversatieActiva) return;
+
+    // Runda din conversatia parasita n-are unde sa mai scrie: bulele ei tocmai ies de pe ecran.
+    anuleazaRunda();
+    conversatieActiva = id;
+    localStorage.setItem(CHEIE_ACTIVA, id);
+    deseneazaConversatii();
+    actualizeazaSubtitlul();
+    await incarcaIstoric();
+    input.focus();
+  }
+
+  async function conversatieNoua() {
+    anuleazaRunda();
+    const noua = await (await fetch("/api/conversatii", { method: "POST" })).json();
+    conversatieActiva = noua.id;
+    localStorage.setItem(CHEIE_ACTIVA, noua.id);
+    await incarcaConversatii();
+    await incarcaIstoric();
+    deschidePanou(false);
+    input.focus();
+  }
+
+  async function stergeConversatia(c) {
+    if (!confirm(`Ștergi „${titluAfisat(c)}"? Mesajele ei nu se mai pot recupera.`)) return;
+    const eraActiva = c.id === conversatieActiva;
+    if (eraActiva) anuleazaRunda();
+
+    conversatii = await (await fetch(`/api/conversatii/${c.id}`, { method: "DELETE" })).json();
+    if (eraActiva) {
+      // Serverul lasa mereu macar una in urma, deci am unde sa fiu dusa.
+      conversatieActiva = conversatii[0].id;
+      localStorage.setItem(CHEIE_ACTIVA, conversatieActiva);
+      await incarcaIstoric();
+    }
+    deseneazaConversatii();
+    actualizeazaSubtitlul();
+  }
+
+  /** Redenumire pe loc: titlul din lista devine casuta de scris, Enter salveaza, Escape renunta. */
+  function editeazaTitlul(c, element) {
+    const camp = document.createElement("input");
+    camp.type = "text";
+    camp.className = "editare";
+    camp.value = c.titlu;
+    camp.placeholder = TITLU_NENUMITA;
+    element.replaceWith(camp);
+    camp.focus();
+    camp.select();
+    camp.addEventListener("click", (ev) => ev.stopPropagation());
+
+    async function salveaza() {
+      camp.disabled = true; // si ca sa nu salveze de doua ori: Enter muta focusul, deci da si blur
+      await fetch(`/api/conversatii/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ titlu: camp.value.trim() }),
+      });
+      await incarcaConversatii();
+    }
+
+    camp.addEventListener("keydown", (ev) => {
+      ev.stopPropagation(); // Escape aici renunta la redenumire, nu inchide panoul
+      if (ev.key === "Enter") salveaza();
+      else if (ev.key === "Escape") deseneazaConversatii();
+    });
+    camp.addEventListener("blur", () => {
+      if (!camp.disabled) deseneazaConversatii();
+    });
+  }
+
+  butonNoua.addEventListener("click", conversatieNoua);
+  butonPanou.addEventListener("click", () => {
+    deschidePanou(!document.body.classList.contains("panou-deschis"));
+  });
+  scrim.addEventListener("click", () => deschidePanou(false));
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") deschidePanou(false);
+  });
 
   // ---------- identitate ----------
 
@@ -597,7 +945,10 @@
   }
 
   async function incarcaIstoric() {
-    const raspuns = await fetch("/api/mesaje");
+    conversatie.textContent = "";
+    if (!conversatieActiva) return;
+
+    const raspuns = await fetch(`/api/conversatii/${conversatieActiva}/mesaje`);
     const mesaje = await raspuns.json();
 
     if (!mesaje.length) {
@@ -617,7 +968,8 @@
     laFinal();
   }
 
-  incarcaProfiluri().then(incarcaIstoric);
+  conversatieActiva = localStorage.getItem(CHEIE_ACTIVA);
+  incarcaProfiluri().then(incarcaConversatii).then(incarcaIstoric);
 
   // ---------- runda de raspunsuri ----------
 
@@ -655,12 +1007,16 @@
     let textCurent = "";
 
     try {
-      const raspuns = await fetch("/api/mesaje", {
+      const raspuns = await fetch(`/api/conversatii/${conversatieActiva}/mesaje`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
         signal: frana.signal,
       });
+
+      // Mesajul meu e deja salvat, deci conversatia si-a luat titlul din el si a urcat in capul
+      // listei. Se afla acum, nu la capatul rundei: pana termina consiliul trec zeci de secunde.
+      incarcaConversatii();
 
       for await (const eveniment of evenimente(raspuns.body)) {
         if (eveniment.tip === "personaj") {
@@ -723,7 +1079,7 @@
   form.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const text = input.value.trim();
-    if (!text) return;
+    if (!text || !conversatieActiva) return;
 
     // Am prioritate fata de consiliu: runda in curs se taie inainte sa inceapa alta, ca sa nu
     // scrie doua runde peste acelasi ecran.

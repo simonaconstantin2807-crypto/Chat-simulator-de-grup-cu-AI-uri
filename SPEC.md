@@ -67,6 +67,23 @@ Pot interveni oricând — nu aștept să se termine runda. Mesajul meu nou taie
 replica pe jumătate scrisă dispare de pe ecran și nu se salvează, iar cele deja terminate rămân.
 Nu se suprapun două runde, iar pe server generarea se oprește odată cu runda anulată.
 
+## 3.1 Mai multe conversații
+
+Discuțiile stau separat, ca într-o aplicație de chat: aleg una din listă și o continui din
+punctul unde am rămas. Fac una nouă dintr-un buton, o redenumesc sau o șterg.
+
+Titlul se scrie singur, din primele cuvinte ale primului meu mesaj — nu sunt obligată să-l
+compun eu, dar îl pot schimba oricând, iar titlul scris de mine nu mai e înlocuit de nimic.
+
+Fiecare conversație are istoricul ei complet separat: personajele dintr-una nu văd nimic din
+alta, nici măcar în context. Conversația deschisă supraviețuiește la refresh — mă întorc unde
+eram, nu la prima din listă.
+
+Totul rămâne local, în fișiere JSON, câte unul pe conversație — le pot deschide ca să văd exact
+ce a primit modelul. Fără cont, fără bază de date.
+
+## 3.2 Ce știu personajele
+
 Personajele nu caută informația live (fără RAG, fără tool calling) — fiecare are, în system
 prompt-ul lui, esența conceptului din document și unghiul lui de interes. Nu știu tot, dar
 știu suficient cât să aibă o opinie fundamentată.

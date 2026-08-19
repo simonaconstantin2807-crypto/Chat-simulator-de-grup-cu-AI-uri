@@ -4,7 +4,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.concurrency import iterate_in_threadpool
@@ -30,7 +30,9 @@ zaruri = random.random
 
 # Numarul rundei in curs. Am prioritate fata de consiliu (M9): mesajul meu nou incepe o runda
 # noua, iar cea veche se opreste cand vede ca numarul ei nu mai e cel curent. Fara asta, doua
-# runde ar scrie in acelasi ecran si in acelasi istoric.
+# runde ar scrie in acelasi ecran si in acelasi istoric. Numarul e unul singur peste toate
+# conversatiile: e o singura utilizatoare, cu o singura fereastra in fata - o runda lasata in
+# urma intr-o alta conversatie n-are cui sa mai scrie.
 _runda_curenta = 0
 
 # Acelasi lacat numeroteaza rundele si scrie in istoric, ca o runda tocmai anulata sa nu apuce
@@ -38,12 +40,12 @@ _runda_curenta = 0
 _lacat_runde = threading.Lock()
 
 
-def incepe_runda(mesaj_utilizator: dict) -> int:
+def incepe_runda(id_conversatie: str, mesaj_utilizator: dict) -> int:
     """Salveaza mesajul meu si intoarce numarul rundei noi. De aici, cea veche e anulata."""
     global _runda_curenta
     with _lacat_runde:
         _runda_curenta += 1
-        istoric.salveaza_mesaj(mesaj_utilizator)
+        istoric.salveaza_mesaj(id_conversatie, mesaj_utilizator)
         return _runda_curenta
 
 
@@ -51,12 +53,12 @@ def runda_anulata(numar: int) -> bool:
     return numar != _runda_curenta
 
 
-def salveaza_replica(numar: int, mesaj: dict) -> bool:
+def salveaza_replica(numar: int, id_conversatie: str, mesaj: dict) -> bool:
     """Replica intra in istoric doar daca runda ei mai e cea curenta."""
     with _lacat_runde:
         if runda_anulata(numar):
             return False
-        istoric.salveaza_mesaj(mesaj)
+        istoric.salveaza_mesaj(id_conversatie, mesaj)
         return True
 
 
@@ -105,6 +107,17 @@ class MesajIntrare(BaseModel):
     text: str
 
 
+class TitluIntrare(BaseModel):
+    titlu: str
+
+
+def _conversatie_sau_404(id_conversatie: str) -> dict:
+    conversatie = istoric.citeste_conversatie(id_conversatie)
+    if not conversatie:
+        raise HTTPException(status_code=404, detail="conversatia nu exista")
+    return conversatie
+
+
 def _eveniment(date: dict) -> str:
     """O linie NDJSON din fluxul de raspuns: pagina citeste linie cu linie, cat ii vine."""
     return json.dumps(date, ensure_ascii=False) + "\n"
@@ -141,16 +154,42 @@ def profilurile():
     }
 
 
-@app.get("/api/mesaje")
-def istoricul():
-    return istoric.incarca_istoric()
+@app.get("/api/conversatii")
+def conversatiile():
+    return istoric.listeaza_conversatii()
 
 
-@app.post("/api/mesaje")
-async def trimite(mesaj: MesajIntrare, cerere: Request):
+@app.post("/api/conversatii")
+def conversatie_noua():
+    return istoric.creeaza_conversatie()
+
+
+@app.patch("/api/conversatii/{id_conversatie}")
+def redenumeste(id_conversatie: str, date: TitluIntrare):
+    _conversatie_sau_404(id_conversatie)
+    return istoric.redenumeste_conversatie(id_conversatie, date.titlu)
+
+
+@app.delete("/api/conversatii/{id_conversatie}")
+def sterge(id_conversatie: str):
+    _conversatie_sau_404(id_conversatie)
+    istoric.sterge_conversatie(id_conversatie)
+    # Sterse toate, ramane una goala: pagina trebuie sa aiba mereu unde sa ma lase sa scriu.
+    istoric.asigura_o_conversatie()
+    return istoric.listeaza_conversatii()
+
+
+@app.get("/api/conversatii/{id_conversatie}/mesaje")
+def istoricul(id_conversatie: str):
+    return _conversatie_sau_404(id_conversatie)["mesaje"]
+
+
+@app.post("/api/conversatii/{id_conversatie}/mesaje")
+async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
+    _conversatie_sau_404(id_conversatie)
     coada = ordinea_vorbitorilor(mesaj.text, PERSONAJE)
     obligati = set(obligati_sa_raspunda(mesaj.text, PERSONAJE, sansa=zaruri))
-    numar = incepe_runda({**UTILIZATOR, "eu": True, "text": mesaj.text})
+    numar = incepe_runda(id_conversatie, {**UTILIZATOR, "eu": True, "text": mesaj.text})
 
     async def runda():
         au_vorbit = set()
@@ -169,7 +208,7 @@ async def trimite(mesaj: MesajIntrare, cerere: Request):
             # Contextul se citeste abia acum, nu la inceputul rundei: asa fiecare aude ce s-a
             # zis inaintea lui. Ultimul mesaj din el e replica la care raspunde, deci iese din
             # context si intra ca intrebare curenta.
-            context = istoric.context_pentru(id_personaj)
+            context = istoric.context_pentru(id_conversatie, id_personaj)
             intrebare = context.pop()["content"] if context else mesaj.text
 
             yield _eveniment({"tip": "personaj", **profil_public(personaj)})
@@ -206,7 +245,8 @@ async def trimite(mesaj: MesajIntrare, cerere: Request):
 
             # Daca intre timp am scris peste runda, replica nu se salveaza: pagina a sters deja
             # bula pe jumatate scrisa, iar ce nu se vede n-are voie sa reapara la refresh.
-            if not salveaza_replica(numar, _mesaj_de_salvat(personaj, text_complet)):
+            replica = _mesaj_de_salvat(personaj, text_complet)
+            if not salveaza_replica(numar, id_conversatie, replica):
                 return
             a_vorbit_cineva = True
             yield _eveniment({"tip": "gata"})

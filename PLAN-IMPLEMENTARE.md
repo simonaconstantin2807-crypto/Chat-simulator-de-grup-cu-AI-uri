@@ -158,6 +158,40 @@ tac chiar și obligate. Sorții din M9 obligă un vorbitor, dar dacă tocmai el 
 goală. Atunci serverul trimite `{"tip":"consiliul_tace"}` și pagina scrie o singură linie
 discretă — tăcerea consiliului nu mai arată ca un server picat.
 
+## M11 — Conversații multiple
+
+Până acum exista o singură discuție, în `backend/data/conversatie.json`. Acum sunt mai multe,
+separate: aleg una din listă și o continui din punctul unde am rămas, fac una nouă dintr-un
+buton, o redenumesc sau o șterg.
+
+Fiecare conversație e un fișier al ei, în `backend/data/conversatii/`, cu titlul și mesajele
+înăuntru. Rămâne JSON din același motiv ca la M6: deschid fișierul și văd ce a primit modelul.
+Lista se obține citind folderul, fără fișier-index — un index ar fi fost mai rapid, dar ar fi
+însemnat două surse de adevăr care se pot desincroniza.
+
+Titlul se scrie singur din primele cuvinte ale primului meu mesaj (`titlu_din_mesaj` din
+`backend/istoric.py`). Titlul gol înseamnă „încă nenumită", deci nu e nevoie de niciun câmp în
+plus ca să se știe dacă se mai poate genera: un titlu pus de mine e o decizie și nu mai e
+înlocuit de nimic.
+
+Izolarea e în `context_pentru`, care primește acum și conversația: personajele dintr-una nu văd
+nimic din alta, nici măcar în context. `MESAJE_IN_CONTEXT` rămâne neschimbat — fiecare
+conversație are istoricul ei, deci și fereastra ei.
+
+Conversația deschisă se ține în `localStorage`, nu pe server: nu există cont, iar serverul n-are
+de unde ști în care dintre ele mă uit. Dacă între timp a fost ștearsă, pagina cade pe cea mai
+recentă. Serverul lasă mereu măcar o conversație în urmă, ca ștergerea ultimei să nu mă lase
+fără niciun loc în care să scriu.
+
+Conversația de dinainte se migrează singură la prima pornire care o găsește: devine prima din
+listă, cu titlul luat din primul meu mesaj. Fișierul vechi e redenumit în `conversatie.json.migrat`,
+nu șters — lipsa lui e și semnalul că migrarea s-a făcut deja, deci nu se repetă la restart.
+
+În interfață, lista stă într-un panou lateral fixat la stânga peste 900px, iar sub 900px devine
+sertar peste conversație, deschis din butonul `☰` din header. Coloana de chat rămâne exact cum
+era, cu aceleași lățimi, deci și pe 390px arată ca înainte. Alternativa — o bară de conversații
+deasupra — ar fi mâncat din înălțime tocmai pe ecranul unde e cea mai scumpă.
+
 ## Definiția de „gata"
 
 1. Pornesc totul cu un singur pas (sau doi, dacă backend + frontend sunt separate) — nu o
@@ -166,7 +200,7 @@ discretă — tăcerea consiliului nu mai arată ca un server picat.
    ca opinii, nu ca fișe de informații.
 3. Cele 5 personaje sunt clar distincte — le recunosc fără să mă uit la nume.
 4. Un personaj comentează ce a zis alt personaj, nu doar ce am zis eu.
-5. Dau refresh și conversația e tot acolo.
+5. Dau refresh și conversația e tot acolo — chiar cea în care eram, dintre mai multe.
 6. Niciun `TODO` sau cod de test uitat în proiect.
 
 ## Ce rămâne explicit în afara acestei etape
@@ -177,3 +211,4 @@ Fără cont/login (dacă apare vreodată nevoia, e o decizie separată — vezi 
 lor, atât. Orchestrarea „deșteaptă" — personajele decizând singure dacă au ceva de adăugat —
 a intrat la M8, dar în forma ei simplă: fiecare decide pentru el, prin `PAS`. Fără arbitru care
 citește runda și împarte cuvântul, fără ca personajele să scrie nechemate, între mesajele mele.
+Conversațiile multiple (M11) n-au adus nici cont, nici bază de date: tot local, tot în JSON.

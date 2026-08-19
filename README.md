@@ -49,22 +49,37 @@ lui — singurul lucru pe care testele deterministe nu-l pot garanta.
   ceva.
 - Dacă un personaj scrie `@Nume` în replica lui, cel chemat răspunde imediat după și pierde și
   el dreptul de a tăcea. Nimeni nu vorbește de două ori în aceeași rundă.
-- Conversația se salvează în `backend/data/conversatie.json` și e tot acolo după refresh sau
-  după repornirea serverului.
+- Conversațiile stau în panoul din stânga: apeși pe una și o continui de unde ai rămas, faci
+  una nouă din **+ Nouă**, o redenumești cu ✏️ (Enter salvează, Escape renunță) sau o ștergi cu
+  🗑️. Pe telefon panoul e sertar și se deschide din butonul ☰ din header.
+- Titlul se scrie singur din primele cuvinte ale primului tău mesaj; dacă îl schimbi tu, rămâne
+  cum l-ai scris.
+- Fiecare conversație are istoricul ei separat, într-un fișier al ei în
+  `backend/data/conversatii/`. Personajele dintr-o conversație nu văd nimic din alta.
+- Conversația deschisă e tot acolo după refresh sau după repornirea serverului. Discuția de
+  dinainte de conversațiile multiple se mută singură la prima pornire, iar fișierul ei vechi
+  rămâne pe disc ca `conversatie.json.migrat`.
 - Poți scrie oricând, chiar peste un personaj care încă scrie: mesajul tău taie runda în curs.
   Replica pe jumătate scrisă dispare de pe ecran și nu se salvează, cele deja terminate rămân,
   iar pe server generarea se oprește — nu se ard tokeni pentru o rundă anulată.
 
 ## API
 
-| Metodă | Rută             | Ce face                                                          |
-| ------ | ---------------- | ---------------------------------------------------------------- |
-| GET    | `/api/personaje` | Profilurile publice (nume, rol, avatar, culori) + utilizatoarea. |
-| GET    | `/api/mesaje`    | Istoricul conversației.                                          |
-| POST   | `/api/mesaje`    | Trimite un mesaj; răspunde cu flux NDJSON (vezi mai jos).        |
-| GET    | `/api/health`    | Confirmă că modelul răspunde.                                    |
+| Metodă | Rută                            | Ce face                                                            |
+| ------ | ------------------------------- | ------------------------------------------------------------------ |
+| GET    | `/api/personaje`                | Profilurile publice (nume, rol, avatar, culori) + utilizatoarea.   |
+| GET    | `/api/conversatii`              | Lista conversațiilor, cea folosită ultima prima. Fără mesaje.      |
+| POST   | `/api/conversatii`              | Conversație nouă, goală și fără titlu.                             |
+| PATCH  | `/api/conversatii/{id}`         | Redenumește; corpul e `{"titlu": "..."}`.                          |
+| DELETE | `/api/conversatii/{id}`         | Șterge; răspunde cu lista rămasă (mereu măcar una).                |
+| GET    | `/api/conversatii/{id}/mesaje`  | Istoricul conversației.                                            |
+| POST   | `/api/conversatii/{id}/mesaje`  | Trimite un mesaj; răspunde cu flux NDJSON (vezi mai jos).          |
+| GET    | `/api/health`                   | Confirmă că modelul răspunde.                                      |
 
-Fluxul de la `POST /api/mesaje` are câte un obiect JSON pe linie:
+Un `id` care nu există dă 404. Conversația e listată cu `id`, `titlu` (gol dacă n-a fost încă
+scris niciun mesaj în ea), `creatLa`, `actualizatLa` și `numarMesaje`.
+
+Fluxul de la `POST /api/conversatii/{id}/mesaje` are câte un obiect JSON pe linie:
 `{"tip":"personaj",...}` (cine începe să vorbească), `{"tip":"text","text":"..."}` (bucată de
 răspuns), `{"tip":"gata"}` (mesaj terminat), `{"tip":"tace"}` (n-a avut ce adăuga — pagina
 scoate bula de pe ecran), `{"tip":"consiliul_tace"}` (n-a vorbit nimeni în toată runda),
@@ -76,8 +91,9 @@ peste ea sau pentru că pagina a închis conexiunea. Ce nu s-a terminat cu `{"ti
 
 ## Memoria personajelor
 
-Fiecare personaj primește ultimele `MESAJE_IN_CONTEXT` mesaje (vezi `backend/istoric.py`) —
-toată discuția, inclusiv replicile celorlalți, care vin cu numele vorbitorului în față.
+Fiecare personaj primește ultimele `MESAJE_IN_CONTEXT` mesaje din conversația curentă (vezi
+`backend/istoric.py`) — toată discuția de acolo și numai de acolo, inclusiv replicile celorlalți,
+care vin cu numele vorbitorului în față.
 Propriile replici rămân fără prefix, ca să nu învețe să-și semneze mesajele.
 
 Contextul se citește la rândul fiecăruia, nu la începutul rundei: al doilea vorbitor aude ce a
