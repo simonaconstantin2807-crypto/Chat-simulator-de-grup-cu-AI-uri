@@ -576,3 +576,233 @@ def test_o_conversatie_care_nu_exista_da_404(monkeypatch, tmp_path):
         "POST", "/api/conversatii/nascocita/mesaje", json={"text": "salut"}
     ) as raspuns:
         assert raspuns.status_code == 404
+
+
+# ---------- conversatia continua singura ----------
+
+
+def _continuare(conversatie: str, runda: int) -> list[dict]:
+    with client.stream(
+        "POST", f"/api/conversatii/{conversatie}/continuare", json={"runda": runda}
+    ) as raspuns:
+        assert raspuns.status_code == 200
+        return [json.loads(linie) for linie in raspuns.iter_lines() if linie.strip()]
+
+
+def _ultimul_vorbitor(conversatie: str) -> str:
+    return client.get(f"/api/conversatii/{conversatie}/mesaje").json()[-1]["personajId"]
+
+
+def _cine_urmeaza(conversatie: str) -> dict:
+    """Cine iese la aruncarea 0.0: primul din consiliu care nu tocmai a vorbit."""
+    ultimul = _ultimul_vorbitor(conversatie)
+    return next(p for p in main.PERSONAJE.values() if p["id"] != ultimul)
+
+
+def _continua(evenimente: list[dict]) -> dict | None:
+    return next((e for e in evenimente if e["tip"] == "continua"), None)
+
+
+def _o_runda_si_o_continuare(monkeypatch, tmp_path, replici=None):
+    """Runda mea, apoi numarul ei - de aici incolo conversatia poate merge singura."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    cereri = _model_fals(monkeypatch, replici)
+
+    evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
+
+    return conversatie, _continua(evenimente)["runda"], cereri
+
+
+def test_dupa_runda_mea_conversatia_mai_are_de_zis_intre_doua_si_patru_replici(
+    monkeypatch, tmp_path
+):
+    """Nu la infinit: pe gemma4:e2b, dupa vreo 8-10 replici autonome discutia intra in bucla."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_fals(monkeypatch)
+
+    continua = _continua(_evenimente("Cum arătăm prețurile?", conversatie))
+
+    minim, maxim = main.REPLICI_AUTONOME
+    assert minim <= continua["replici"] <= maxim
+
+
+def test_numarul_de_replici_autonome_e_tras_la_sorti_intre_plafoane():
+    minim, maxim = main.REPLICI_AUTONOME
+
+    assert main.cate_replici_autonome(sansa=lambda: 0.0) == minim
+    assert main.cate_replici_autonome(sansa=lambda: 0.999) == maxim
+    assert main.cate_replici_autonome(sansa=lambda: 1.0) == maxim  # un fals de test poate da 1.0
+
+
+def test_pauza_dintre_replicile_autonome_o_da_serverul(monkeypatch, tmp_path):
+    """Un singur loc unde se schimba intervalul: pagina nu-si alege singura secundele."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_fals(monkeypatch)
+
+    continua = _continua(_evenimente("Cum arătăm prețurile?", conversatie))
+
+    assert continua["pauzaSecunde"] == list(main.PAUZA_SECUNDE)
+
+
+def test_consiliul_care_a_tacut_nu_continua_singur(monkeypatch, tmp_path):
+    """N-avea nimeni ce spune la mesajul meu; n-are rost sa se caute vorbitori mai departe."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _toti_tac(monkeypatch)
+
+    evenimente = _evenimente("Mulțumesc, notat.", conversatie)
+
+    assert _continua(evenimente) is None
+
+
+def test_runda_taiata_de_mesajul_meu_nu_promite_replici_autonome(monkeypatch, tmp_path):
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _mesaj_nou_peste_runda(monkeypatch, conversatie)
+
+    evenimente = _evenimente("@Maestra ce zici de AB?", conversatie)
+
+    assert _continua(evenimente) is None
+
+
+def test_la_o_replica_autonoma_vorbeste_un_singur_personaj(monkeypatch, tmp_path):
+    conversatie, runda, _ = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    _zaruri(monkeypatch, 0.0)
+
+    evenimente = _continuare(conversatie, runda)
+
+    assert len(_vorbitori(evenimente)) == 1
+
+
+def test_cine_tocmai_a_vorbit_nu_incepe_si_replica_urmatoare(monkeypatch, tmp_path):
+    conversatie, runda, _ = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    ultimul = _ultimul_vorbitor(conversatie)
+    _zaruri(monkeypatch, 0.0)
+
+    evenimente = _continuare(conversatie, runda)
+
+    assert ultimul not in _intrebati(evenimente)
+
+
+def test_cel_chemat_si_neajuns_la_cuvant_are_intaietate_la_replica_autonoma(monkeypatch, tmp_path):
+    """Regula 80/20 din sesiunea 11: aruncarea sub prag scoate cuvantul celui asteptat.
+
+    Chemarea ramane in aer pentru ca Maestra o cheama pe Operatoarea dupa ce aceasta vorbise
+    deja - nimeni nu vorbeste de doua ori in aceeasi runda.
+    """
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_fals(
+        monkeypatch,
+        {
+            "Maestra": "nu știu, @Operatoarea ce zici?",
+            "Antreprenoarea": "PAS",
+            "Clienta": "PAS",
+            "Programatorul": "PAS",
+        },
+    )
+    runda = _continua(_evenimente("@Operatoarea și @Maestra, ce ziceți?", conversatie))["runda"]
+    _zaruri(monkeypatch, 0.79, 0.0)
+
+    evenimente = _continuare(conversatie, runda)
+
+    assert _intrebati(evenimente)[0] == "operatoarea"
+
+
+def test_daca_alesul_tace_replica_nu_se_pierde_ci_se_incearca_altcineva(monkeypatch, tmp_path):
+    conversatie, runda, _ = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    primul_ales = _cine_urmeaza(conversatie)
+    _model_fals(monkeypatch, {primul_ales["nume"]: "PAS"})
+    _zaruri(monkeypatch, 0.0, 0.0)
+
+    evenimente = _continuare(conversatie, runda)
+
+    assert _intrebati(evenimente)[0] == primul_ales["id"]
+    assert [e["tip"] for e in evenimente if e["tip"] in ("tace", "gata")] == ["tace", "gata"]
+    assert len(_vorbitori(evenimente)) == 1
+
+
+def test_o_replica_autonoma_nu_intreaba_tot_consiliul_daca_toti_tac(monkeypatch, tmp_path):
+    """Plafonul de incercari: altfel o discutie stinsa ar cere cinci apeluri la model pe replica."""
+    conversatie, runda, _ = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    _toti_tac(monkeypatch)
+    _zaruri(monkeypatch, *([0.0] * 6))
+
+    evenimente = _continuare(conversatie, runda)
+
+    assert len(_intrebati(evenimente)) == main.INCERCARI_PE_REPLICA
+    assert not _vorbitori(evenimente)
+
+
+def test_personajul_care_vorbeste_de_la_sine_nu_e_obligat_sa_vorbeasca(monkeypatch, tmp_path):
+    """Nimeni nu l-a chemat pe nume: are voie sa scrie PAS, ca in orice alta runda."""
+    conversatie, runda, cereri = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    _zaruri(monkeypatch, 0.0)
+
+    _continuare(conversatie, runda)
+
+    assert main.INDEMN_OBLIGAT not in cereri[-1]["sistem"]
+
+
+def test_replica_autonoma_raspunde_ultimei_replici_din_chat(monkeypatch, tmp_path):
+    conversatie, runda, cereri = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    vorbitorul_dinainte = main.PERSONAJE[_ultimul_vorbitor(conversatie)]["nume"]
+    _zaruri(monkeypatch, 0.0)
+
+    _continuare(conversatie, runda)
+
+    assert cereri[-1]["mesaj"] == f"{vorbitorul_dinainte}: replica {vorbitorul_dinainte}"
+
+
+def test_replica_autonoma_ramane_in_istoricul_conversatiei(monkeypatch, tmp_path):
+    conversatie, runda, _ = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    _zaruri(monkeypatch, 0.0)
+
+    evenimente = _continuare(conversatie, runda)
+    istoricul = client.get(f"/api/conversatii/{conversatie}/mesaje").json()
+
+    assert istoricul[-1]["personajId"] == _vorbitori(evenimente)[0]
+
+
+def test_mesajul_meu_anuleaza_replicile_autonome_ramase(monkeypatch, tmp_path):
+    """Am prioritate (M9): ce mai avea consiliul de zis singur nu se aduna peste runda mea noua."""
+    conversatie, runda, _ = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _evenimente("De fapt, altceva.", conversatie)
+    inainte = client.get(f"/api/conversatii/{conversatie}/mesaje").json()
+    _zaruri(monkeypatch, 0.0)
+
+    evenimente = _continuare(conversatie, runda)
+
+    assert evenimente == []
+    assert client.get(f"/api/conversatii/{conversatie}/mesaje").json() == inainte
+
+
+def test_o_conversatie_goala_n_are_ce_continua(monkeypatch, tmp_path):
+    """Fara nicio replica in urma, n-ar avea nimeni la ce raspunde."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch, 0.0)
+
+    assert _continuare(conversatie, main.numarul_rundei()) == []
+
+
+def test_replicile_autonome_stau_in_conversatia_lor(monkeypatch, tmp_path):
+    conversatie, runda, _ = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    alta = client.post("/api/conversatii").json()["id"]
+    _zaruri(monkeypatch, 0.0)
+
+    _continuare(conversatie, runda)
+
+    assert client.get(f"/api/conversatii/{alta}/mesaje").json() == []
+
+
+def test_o_conversatie_care_nu_exista_nu_poate_fi_continuata(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+
+    with client.stream(
+        "POST", "/api/conversatii/nascocita/continuare", json={"runda": 1}
+    ) as raspuns:
+        assert raspuns.status_code == 404

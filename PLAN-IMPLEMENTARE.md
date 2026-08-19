@@ -192,6 +192,45 @@ sertar peste conversație, deschis din butonul `☰` din header. Coloana de chat
 era, cu aceleași lățimi, deci și pe 390px arată ca înainte. Alternativa — o bară de conversații
 deasupra — ar fi mâncat din înălțime tocmai pe ecranul unde e cea mai scumpă.
 
+## M12 — Conversația continuă singură, cu limită
+
+Partea din sesiunea 11 care lipsea: „de la eu moderez la ele vorbesc singure", dar limitat. După
+runda pornită de mesajul meu, conversația mai merge de la sine 2–4 replici (`REPLICI_AUTONOME`
+din `backend/main.py`), apoi se oprește și așteaptă. Plafonul e ales pe măsurătoare, nu din
+prudență: pe `gemma4:e2b`, după vreo 8–10 replici autonome discuția intră în buclă și personajele
+se repetă — se oprește înainte, nu după.
+
+La fiecare replică autonomă vorbește **unul singur**, ales probabilistic — aici se aplică regula
+80/20 în forma din slide-uri, spre deosebire de mecanica de la M7–M8, unde e întrebat fiecare și
+răspunde cine are ceva de zis. `PARTEA_CHEMATILOR` (`backend/personaje.py`) merge către cei
+chemați cu `@` și neajunși încă la cuvânt (`chemati_fara_raspuns`), restul se împarte la ceilalți
+(`alege_vorbitorul`). Cine tocmai a vorbit e exclus din alegerea imediat următoare — două replici
+la rând de la același personaj n-ar mai fi o conversație de grup.
+
+Cel ales poate tot să scrie `PAS`, fără `INDEMN_OBLIGAT`: nu l-a chemat nimeni pe nume. Dacă
+tace, replica nu se consumă degeaba — se încearcă altcineva, dar în limita `INCERCARI_PE_REPLICA`,
+altfel o discuție stinsă ar cere un apel la model pentru fiecare personaj, la fiecare replică.
+
+**Transport: tot streaming NDJSON, nu polling.** Slide-urile sesiunii 11 sugerează polling, dar
+ar fi însemnat să arunc `AbortController`-ul și oprirea generării de la M9 și să înlocuiesc un
+canal care merge cu unul care întreabă în gol. Runda pornită de mesajul meu se termină acum cu un
+eveniment `{"tip":"continua"}`, care spune paginii câte replici mai urmează, cât să aștepte între
+ele și din ce rundă vin. Pagina le cere una câte una, la `POST /api/conversatii/{id}/continuare`,
+fiecare cu fluxul ei — aceleași evenimente ca la o rundă obișnuită.
+
+Împărțirea asta pică natural: **pauza o ține pagina, alegerea vorbitorului o ține serverul.** Doar
+pagina știe dacă am început să scriu — regula 3 din sesiunea 11, „cât am text în caseta de input,
+nimeni nu vorbește" — și doar ea știe în ce conversație mă uit. Serverul rămâne fără stare între
+replici, ca până acum. Numărul rundei călătorește dus-întors (`ContinuareIntrare`): o replică
+rămasă dintr-o rundă peste care am scris e refuzată pe server, nu doar anulată în pagină.
+
+Intervalul de pauză stă într-un singur loc, `PAUZA_SECUNDE` din `backend/main.py`, și ajunge în
+pagină prin evenimentul `continua`. Slide-urile sugerează 0–300s; cinci minute între replici sunt
+absurde pentru o ședință de 20 de minute, deci 5–20s.
+
+Aruncările sunt injectate ca peste tot: `main.zaruri` pentru numărul de replici și pentru alegerea
+vorbitorului, `alege_vorbitorul(..., sansa=)` în teste.
+
 ## Definiția de „gata"
 
 1. Pornesc totul cu un singur pas (sau doi, dacă backend + frontend sunt separate) — nu o
@@ -210,5 +249,6 @@ Fără cont/login (dacă apare vreodată nevoia, e o decizie separată — vezi 
 `concept-aplicatie-miyuki.md` — cunoștințele personajelor sunt cele din system prompt-urile
 lor, atât. Orchestrarea „deșteaptă" — personajele decizând singure dacă au ceva de adăugat —
 a intrat la M8, dar în forma ei simplă: fiecare decide pentru el, prin `PAS`. Fără arbitru care
-citește runda și împarte cuvântul, fără ca personajele să scrie nechemate, între mesajele mele.
-Conversațiile multiple (M11) n-au adus nici cont, nici bază de date: tot local, tot în JSON.
+citește runda și împarte cuvântul. Personajele scriu și între mesajele mele, dar numai de la M12
+încoace și numai în limita de acolo: 2–4 replici după runda mea, apoi tăcere până scriu eu din
+nou. Conversațiile multiple (M11) n-au adus nici cont, nici bază de date: tot local, tot în JSON.

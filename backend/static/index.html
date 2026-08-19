@@ -530,6 +530,13 @@
   // Frana rundei in curs: scriu peste ea oricand, fara sa astept consiliul.
   let rundaCurenta = null;
 
+  // Dupa runda mea, conversatia mai merge singura cateva replici. Cate si cat se asteapta intre
+  // ele le spune serverul, in evenimentul `continua` - pagina nu-si alege singura secundele.
+  let replicileRamase = 0;
+  let rundaAutonoma = null;
+  let pauzaSecunde = [0, 0];
+  let ceasAutonom = null;
+
   let conversatii = [];
   let conversatieActiva = null;
 
@@ -912,6 +919,7 @@
     indexSugestie = 0;
     actualizeazaSugestiile();
     actualizeazaIndiciu();
+    programeazaReplicaAutonoma();
   });
 
   input.addEventListener("blur", inchideSugestiile);
@@ -998,31 +1006,42 @@
     // o runda pe care n-o mai vede nimeni.
     rundaCurenta?.abort();
     rundaCurenta = null;
+    opresteReplicileAutonome();
   }
 
-  async function ruleazaRunda(text) {
+  /** Citeste un flux de replici - al rundei mele sau al uneia pe care si-o da consiliul singur. */
+  async function ruleazaFlux(cale, corp, optiuni = {}) {
     const frana = new AbortController();
     rundaCurenta = frana;
     let curent = adaugaIndicator({ nume: "", avatar: "💬", culoare: "#ccc", culoareFundal: "#fff" });
     let textCurent = "";
+    let aVenitCeva = false;
 
     try {
-      const raspuns = await fetch(`/api/conversatii/${conversatieActiva}/mesaje`, {
+      const raspuns = await fetch(cale, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(corp),
         signal: frana.signal,
       });
 
-      // Mesajul meu e deja salvat, deci conversatia si-a luat titlul din el si a urcat in capul
-      // listei. Se afla acum, nu la capatul rundei: pana termina consiliul trec zeci de secunde.
-      incarcaConversatii();
+      optiuni.laPornire?.();
 
       for await (const eveniment of evenimente(raspuns.body)) {
+        aVenitCeva = true;
+
         if (eveniment.tip === "personaj") {
           if (!curent) curent = adaugaIndicator(eveniment);
           else completeazaIdentitatea(curent, eveniment);
           textCurent = "";
+          continue;
+        }
+
+        if (eveniment.tip === "continua") {
+          // Consiliul mai are de zis cateva replici de la sine; pagina le cere una cate una.
+          rundaAutonoma = eveniment.runda;
+          replicileRamase = eveniment.replici;
+          pauzaSecunde = eveniment.pauzaSecunde;
           continue;
         }
 
@@ -1062,11 +1081,18 @@
         // Am scris peste runda asta. Replica pe jumatate scrisa n-a ajuns in istoric, deci
         // n-are ce cauta nici pe ecran - la refresh oricum n-ar mai fi acolo.
         curent?.element.remove();
-        return;
+        return false;
       }
       console.error(eroare);
     } finally {
       if (rundaCurenta === frana) rundaCurenta = null;
+    }
+
+    // O replica autonoma pe care serverul o refuza (runda ei nu mai e cea curenta) vine ca flux
+    // gol: bula pleaca de pe ecran fara nicio vorba despre erori, pentru ca nu e niciuna.
+    if (!aVenitCeva && optiuni.linisteAdmisa) {
+      curent?.element.remove();
+      return false;
     }
 
     // Daca fluxul s-a intrerupt inainte de primul cuvant, nu lasam punctele sa se invarta la infinit.
@@ -1074,6 +1100,57 @@
       curent.bula.className = "bula eroare";
       curent.bula.textContent = "răspunsul s-a întrerupt — verifică dacă serverul și Ollama rulează";
     }
+    return true;
+  }
+
+  async function ruleazaRunda(text) {
+    // Mesajul meu e deja salvat cand vine primul eveniment, deci conversatia si-a luat titlul
+    // din el si a urcat in capul listei. Se afla atunci, nu la capatul rundei: pana termina
+    // consiliul trec zeci de secunde.
+    const dusa = await ruleazaFlux(
+      `/api/conversatii/${conversatieActiva}/mesaje`,
+      { text },
+      { laPornire: incarcaConversatii }
+    );
+    if (dusa) programeazaReplicaAutonoma();
+  }
+
+  // ---------- replicile pe care conversatia si le da singura ----------
+
+  function opresteReplicileAutonome() {
+    clearTimeout(ceasAutonom);
+    ceasAutonom = null;
+    replicileRamase = 0;
+    rundaAutonoma = null;
+  }
+
+  function programeazaReplicaAutonoma() {
+    // Regula 3 din sesiunea 11: cat am text in caseta, nimeni nu vorbeste. Se reia cand trimit
+    // sau cand golesc caseta - scrisul in caseta cheama iar functia asta.
+    if (input.value.trim()) {
+      clearTimeout(ceasAutonom);
+      ceasAutonom = null;
+      return;
+    }
+    // Ceasul deja pornit nu se ia de la capat: altfel orice tasta apasata si stearsa ar amana
+    // replica la nesfarsit.
+    if (!replicileRamase || ceasAutonom) return;
+
+    const [minim, maxim] = pauzaSecunde;
+    ceasAutonom = setTimeout(ruleazaReplicaAutonoma, (minim + Math.random() * (maxim - minim)) * 1000);
+  }
+
+  async function ruleazaReplicaAutonoma() {
+    ceasAutonom = null;
+    if (!replicileRamase || input.value.trim()) return;
+
+    replicileRamase -= 1;
+    const dusa = await ruleazaFlux(
+      `/api/conversatii/${conversatieActiva}/continuare`,
+      { runda: rundaAutonoma },
+      { linisteAdmisa: true }
+    );
+    if (dusa) programeazaReplicaAutonoma();
   }
 
   form.addEventListener("submit", (ev) => {

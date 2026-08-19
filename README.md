@@ -59,6 +59,14 @@ lui — singurul lucru pe care testele deterministe nu-l pot garanta.
 - Conversația deschisă e tot acolo după refresh sau după repornirea serverului. Discuția de
   dinainte de conversațiile multiple se mută singură la prima pornire, iar fișierul ei vechi
   rămâne pe disc ca `conversatie.json.migrat`.
+- După ce se termină runda pornită de mesajul tău, conversația mai merge singură 2–4 replici, la
+  câteva secunde una de alta, apoi se oprește și așteaptă. La fiecare vorbește un singur personaj:
+  80% șanse să fie cineva chemat cu `@` și neajuns încă la cuvânt, 20% împărțit la ceilalți. Cine
+  tocmai a vorbit nu începe și replica următoare, iar cel ales poate să tacă — atunci se încearcă
+  altcineva. Câte replici, cât se așteaptă între ele și câte încercări are una: `REPLICI_AUTONOME`,
+  `PAUZA_SECUNDE` și `INCERCARI_PE_REPLICA` din `backend/main.py`.
+- Cât timp ai text în caseta de input, nimeni nu vorbește de la sine. Se reia când trimiți sau
+  când golești caseta.
 - Poți scrie oricând, chiar peste un personaj care încă scrie: mesajul tău taie runda în curs.
   Replica pe jumătate scrisă dispare de pe ecran și nu se salvează, cele deja terminate rămân,
   iar pe server generarea se oprește — nu se ard tokeni pentru o rundă anulată.
@@ -74,6 +82,7 @@ lui — singurul lucru pe care testele deterministe nu-l pot garanta.
 | DELETE | `/api/conversatii/{id}`         | Șterge; răspunde cu lista rămasă (mereu măcar una).                |
 | GET    | `/api/conversatii/{id}/mesaje`  | Istoricul conversației.                                            |
 | POST   | `/api/conversatii/{id}/mesaje`  | Trimite un mesaj; răspunde cu flux NDJSON (vezi mai jos).          |
+| POST   | `/api/conversatii/{id}/continuare` | O replică pe care consiliul și-o dă singur; corpul e `{"runda": n}`. |
 | GET    | `/api/health`                   | Confirmă că modelul răspunde.                                      |
 
 Un `id` care nu există dă 404. Conversația e listată cu `id`, `titlu` (gol dacă n-a fost încă
@@ -83,7 +92,13 @@ Fluxul de la `POST /api/conversatii/{id}/mesaje` are câte un obiect JSON pe lin
 `{"tip":"personaj",...}` (cine începe să vorbească), `{"tip":"text","text":"..."}` (bucată de
 răspuns), `{"tip":"gata"}` (mesaj terminat), `{"tip":"tace"}` (n-a avut ce adăuga — pagina
 scoate bula de pe ecran), `{"tip":"consiliul_tace"}` (n-a vorbit nimeni în toată runda),
-`{"tip":"eroare","text":"..."}`.
+`{"tip":"eroare","text":"..."}` și, la sfârșitul unei runde în care a vorbit cineva,
+`{"tip":"continua","runda":n,"replici":3,"pauzaSecunde":[5,20]}` — câte replici mai duce
+conversația singură, cât să aștepte pagina între ele și din ce rundă vin.
+
+Fluxul de la `POST /api/conversatii/{id}/continuare` are aceleași evenimente, pentru o singură
+replică (mai puțin `continua` și `consiliul_tace`). Pagina îl cere după pauză, cu numărul de
+rundă primit; dacă între timp am trimis alt mesaj, replica e refuzată și fluxul vine gol.
 
 Fluxul se închide fără alt eveniment dacă runda a fost anulată — pentru că am trimis alt mesaj
 peste ea sau pentru că pagina a închis conexiunea. Ce nu s-a terminat cu `{"tip":"gata"}` nu e
@@ -101,4 +116,5 @@ zis primul și îi răspunde lui, nu neapărat mie.
 
 ## Ce rămâne pentru etapa următoare
 
-- Conversație emergentă — grupul prinde viață, de la „eu moderez" la „ele vorbesc singure".
+- Nimic în lucru. Ce e explicit în afara scopului (cont, RAG, tool calling, arbitru care împarte
+  cuvântul) e listat în `PLAN-IMPLEMENTARE.md`.

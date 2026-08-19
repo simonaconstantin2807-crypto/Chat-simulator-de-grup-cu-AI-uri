@@ -12,6 +12,8 @@ from starlette.concurrency import iterate_in_threadpool
 import istoric
 from ai_client import fara_pas, preincarca, trimite_mesaj, trimite_mesaj_stream
 from personaje import (
+    alege_vorbitorul,
+    chemati_fara_raspuns,
     gaseste_mentiuni,
     incarca_personaje,
     obligati_sa_raspunda,
@@ -24,6 +26,26 @@ from personaje import (
 INDEMN_OBLIGAT = (
     "\n\nAcum e rândul tău și nu poți să taci: scrie o replică scurtă, nu PAS."
 )
+
+# Cate replici mai duce conversatia singura, dupa ce se termina runda pornita de mesajul meu.
+# Numarul se trage la sorti intre plafoane, nu la infinit: pe gemma4:e2b, dupa vreo 8-10 replici
+# autonome discutia intra in bucla si personajele incep sa se repete. Se opreste inainte de asta.
+REPLICI_AUTONOME = (2, 4)
+
+# Cat asteapta pagina intre doua replici autonome, in secunde. Singurul loc de unde se schimba
+# intervalul: pagina il primeste in evenimentul `continua`, nu si-l alege singura. Slide-urile
+# sesiunii 11 sugereaza 0-300s, dar cinci minute intre replici sunt absurde pentru o sedinta de
+# 20 de minute - conversatia ar parea inghetata.
+PAUZA_SECUNDE = (5, 20)
+
+# Cate personaje se intreaba cel mult pentru o singura replica autonoma. Cine e ales poate tot
+# sa scrie PAS, iar atunci replica nu se pierde: se incearca altcineva. Fara plafon, o discutie
+# stinsa ar cere un apel la model pentru fiecare personaj, la fiecare replica.
+INCERCARI_PE_REPLICA = 3
+
+# Tipurile de eveniment cu care se poate incheia o replica. Orice altceva inseamna ca runda s-a
+# oprit la mijloc si nu mai are cine sa asculte urmarea.
+SFARSITURI = ("gata", "tace", "eroare")
 
 # Aruncarea cu banul pentru cei nementionati, scoasa la nivel de modul ca testele s-o poata fixa.
 zaruri = random.random
@@ -51,6 +73,22 @@ def incepe_runda(id_conversatie: str, mesaj_utilizator: dict) -> int:
 
 def runda_anulata(numar: int) -> bool:
     return numar != _runda_curenta
+
+
+def numarul_rundei() -> int:
+    """Runda in curs. Pagina il primeste in evenimentul `continua` si il da inapoi cand cere o
+    replica autonoma, ca una ramasa dintr-o runda peste care am scris sa nu mai apuce sa vorbeasca."""
+    return _runda_curenta
+
+
+def cate_replici_autonome(sansa=random.random) -> int:
+    """Cate replici mai are conversatia de dus singura, tras la sorti intre `REPLICI_AUTONOME`.
+
+    `min` tine numarul sub plafon si daca un fals de test da chiar 1.0, ceea ce `random.random`
+    nu da niciodata.
+    """
+    minim, maxim = REPLICI_AUTONOME
+    return min(minim + int(sansa() * (maxim - minim + 1)), maxim)
 
 
 def salveaza_replica(numar: int, id_conversatie: str, mesaj: dict) -> bool:
@@ -109,6 +147,12 @@ class MesajIntrare(BaseModel):
 
 class TitluIntrare(BaseModel):
     titlu: str
+
+
+class ContinuareIntrare(BaseModel):
+    # Numarul rundei din care vine replica: una ramasa dintr-o runda peste care am scris nu mai
+    # are ce cauta pe ecran.
+    runda: int
 
 
 def _conversatie_sau_404(id_conversatie: str) -> dict:
@@ -184,6 +228,62 @@ def istoricul(id_conversatie: str):
     return _conversatie_sau_404(id_conversatie)["mesaje"]
 
 
+async def replica_personajului(
+    id_conversatie: str,
+    personaj: dict,
+    numar: int,
+    cerere: Request,
+    sistem: str,
+    intrebare_implicita: str,
+):
+    """Evenimentele unei singure replici, in ordinea in care ajung pe ecran.
+
+    Ultimul spune cum s-a incheiat: `gata`, `tace` sau `eroare`. Daca runda s-a oprit la
+    mijloc, generatorul se termina fara niciunul dintre ele - de-asta se yield-eaza dictionare,
+    nu linii gata scrise: cine cheama vede si el ce s-a intamplat, fara sa desfaca JSON-ul.
+    """
+    # Contextul se citeste abia acum, nu la inceputul rundei: asa fiecare aude ce s-a zis
+    # inaintea lui. Ultimul mesaj din el e replica la care raspunde, deci iese din context si
+    # intra ca intrebare curenta.
+    context = istoric.context_pentru(id_conversatie, personaj["id"])
+    intrebare = context.pop()["content"] if context else intrebare_implicita
+
+    yield {"tip": "personaj", **profil_public(personaj)}
+
+    text_complet = ""
+    try:
+        bucati = trimite_mesaj_stream(
+            intrebare,
+            personaj["nume"],
+            sistem=sistem,
+            temperatura=personaj["temperaturaRecomandata"],
+            context=context,
+        )
+        # Asteptarea dupa model se muta pe alt fir: bucla de evenimente ramane libera sa
+        # primeasca mesajul meu urmator, altfel "am prioritate" ar fi doar o vorba.
+        # `fara_pas` inghite raspunsul celui care n-are nimic de adaugat, deci un text gol
+        # aici inseamna "a ales sa taca", nu "a raspuns cu nimic".
+        async for bucata in iterate_in_threadpool(fara_pas(bucati)):
+            if await trebuie_oprita(numar, cerere):
+                return
+            text_complet += bucata
+            yield {"tip": "text", "text": bucata}
+    except Exception:
+        yield {"tip": "eroare", "text": "modelul nu a raspuns"}
+        return
+
+    if not text_complet.strip():
+        yield {"tip": "tace"}
+        return
+
+    # Daca intre timp am scris peste runda, replica nu se salveaza: pagina a sters deja bula pe
+    # jumatate scrisa, iar ce nu se vede n-are voie sa reapara la refresh.
+    if not salveaza_replica(numar, id_conversatie, _mesaj_de_salvat(personaj, text_complet)):
+        return
+
+    yield {"tip": "gata"}
+
+
 @app.post("/api/conversatii/{id_conversatie}/mesaje")
 async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
     _conversatie_sau_404(id_conversatie)
@@ -205,51 +305,26 @@ async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
             au_vorbit.add(id_personaj)
             personaj = PERSONAJE[id_personaj]
 
-            # Contextul se citeste abia acum, nu la inceputul rundei: asa fiecare aude ce s-a
-            # zis inaintea lui. Ultimul mesaj din el e replica la care raspunde, deci iese din
-            # context si intra ca intrebare curenta.
-            context = istoric.context_pentru(id_conversatie, id_personaj)
-            intrebare = context.pop()["content"] if context else mesaj.text
-
-            yield _eveniment({"tip": "personaj", **profil_public(personaj)})
-
             sistem = personaj["systemPrompt"]
             if id_personaj in obligati:
                 sistem += INDEMN_OBLIGAT
 
             text_complet = ""
-            try:
-                bucati = trimite_mesaj_stream(
-                    intrebare,
-                    personaj["nume"],
-                    sistem=sistem,
-                    temperatura=personaj["temperaturaRecomandata"],
-                    context=context,
-                )
-                # Asteptarea dupa model se muta pe alt fir: bucla de evenimente ramane libera
-                # sa primeasca mesajul meu urmator, altfel "am prioritate" ar fi doar o vorba.
-                # `fara_pas` inghite raspunsul celui care n-are nimic de adaugat, deci un text
-                # gol aici inseamna "a ales sa taca", nu "a raspuns cu nimic".
-                async for bucata in iterate_in_threadpool(fara_pas(bucati)):
-                    if await trebuie_oprita(numar, cerere):
-                        return
-                    text_complet += bucata
-                    yield _eveniment({"tip": "text", "text": bucata})
-            except Exception:
-                yield _eveniment({"tip": "eroare", "text": "modelul nu a raspuns"})
+            sfarsit = None
+            async for eveniment in replica_personajului(
+                id_conversatie, personaj, numar, cerere, sistem, mesaj.text
+            ):
+                if eveniment["tip"] == "text":
+                    text_complet += eveniment["text"]
+                sfarsit = eveniment["tip"]
+                yield _eveniment(eveniment)
+
+            if sfarsit not in SFARSITURI:
+                return  # runda s-a oprit la mijlocul replicii
+            if sfarsit != "gata":
                 continue
 
-            if not text_complet.strip():
-                yield _eveniment({"tip": "tace"})
-                continue
-
-            # Daca intre timp am scris peste runda, replica nu se salveaza: pagina a sters deja
-            # bula pe jumatate scrisa, iar ce nu se vede n-are voie sa reapara la refresh.
-            replica = _mesaj_de_salvat(personaj, text_complet)
-            if not salveaza_replica(numar, id_conversatie, replica):
-                return
             a_vorbit_cineva = True
-            yield _eveniment({"tip": "gata"})
 
             # Cine e chemat pe nume raspunde, chiar daca chemarea vine de la un personaj, nu de
             # la mine: trece in fata cozii si pierde dreptul de a tacea.
@@ -267,5 +342,66 @@ async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
         # s-ar distinge de un server picat, asa ca runda goala se anunta.
         if not a_vorbit_cineva:
             yield _eveniment({"tip": "consiliul_tace"})
+            return
+
+        # De aici incolo conversatia poate merge singura cateva replici: pagina afla cate si cat
+        # sa astepte intre ele, apoi le cere una cate una. Nu se promite nimic dupa o runda in
+        # care n-a vorbit nimeni (n-avea cine sa continue) sau peste care am scris deja.
+        if not await trebuie_oprita(numar, cerere):
+            yield _eveniment(
+                {
+                    "tip": "continua",
+                    "runda": numar,
+                    "replici": cate_replici_autonome(sansa=zaruri),
+                    "pauzaSecunde": list(PAUZA_SECUNDE),
+                }
+            )
 
     return StreamingResponse(runda(), media_type="application/x-ndjson")
+
+
+@app.post("/api/conversatii/{id_conversatie}/continuare")
+async def continua(id_conversatie: str, date: ContinuareIntrare, cerere: Request):
+    """O singura replica pe care conversatia si-o da singura, fara ca eu sa fi scris ceva.
+
+    Vorbeste unul singur, ales dupa regula 80/20 - spre deosebire de runda pornita de mesajul
+    meu, unde e intrebat fiecare. Pauza dintre replici o tine pagina: doar ea stie daca am
+    inceput sa scriu, iar cat am text in caseta nimeni nu vorbeste.
+    """
+    _conversatie_sau_404(id_conversatie)
+    numar = date.runda
+
+    async def replica_de_la_sine():
+        # Aceeasi fereastra ca a contextului: o chemare mai veche decat ce mai tine minte
+        # consiliul n-are cum sa astepte la nesfarsit un raspuns.
+        mesaje = istoric.incarca_istoric(id_conversatie)[-istoric.MESAJE_IN_CONTEXT :]
+        if not mesaje:
+            return
+
+        chemati = chemati_fara_raspuns(mesaje, PERSONAJE)
+        # Cine tocmai a vorbit nu incepe si replica urmatoare. Pe masura ce se incearca, ies din
+        # joc si cei care au tacut: replica se da altcuiva, nu se cere de doua ori de la acelasi.
+        exclusi = [mesaje[-1]["personajId"]] if not mesaje[-1].get("eu") else []
+
+        for _ in range(INCERCARI_PE_REPLICA):
+            if await trebuie_oprita(numar, cerere):
+                return
+
+            id_personaj = alege_vorbitorul(PERSONAJE, chemati, exclusi, sansa=zaruri)
+            if id_personaj is None:
+                return
+            exclusi.append(id_personaj)
+            personaj = PERSONAJE[id_personaj]
+
+            sfarsit = None
+            # Fara INDEMN_OBLIGAT: nimeni nu l-a chemat pe nume, deci are voie sa scrie PAS.
+            async for eveniment in replica_personajului(
+                id_conversatie, personaj, numar, cerere, personaj["systemPrompt"], mesaje[-1]["text"]
+            ):
+                sfarsit = eveniment["tip"]
+                yield _eveniment(eveniment)
+
+            if sfarsit != "tace":
+                return
+
+    return StreamingResponse(replica_de_la_sine(), media_type="application/x-ndjson")

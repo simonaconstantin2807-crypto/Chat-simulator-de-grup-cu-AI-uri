@@ -57,7 +57,7 @@ Cele care cheamă Ollama pe bune sunt marcate `@pytest.mark.ollama` (marker decl
 
 ```powershell
 cd backend
-.venv\Scripts\python.exe -m pytest -m "not ollama"   # ~1s, 73 teste, nu cere Ollama pornit
+.venv\Scripts\python.exe -m pytest -m "not ollama"   # ~3s, 141 teste, nu cere Ollama pornit
 .venv\Scripts\python.exe -m pytest                   # tot, inclusiv modelul (~30s)
 ```
 

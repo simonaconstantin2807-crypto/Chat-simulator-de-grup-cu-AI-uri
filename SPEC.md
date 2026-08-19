@@ -88,6 +88,27 @@ Personajele nu caută informația live (fără RAG, fără tool calling) — fie
 prompt-ul lui, esența conceptului din document și unghiul lui de interes. Nu știu tot, dar
 știu suficient cât să aibă o opinie fundamentată.
 
+## 3.3 Conversația continuă singură, cu limită
+
+După ce se termină runda pornită de mesajul meu, discuția mai merge de la sine 2–4 replici
+(numărul se trage la sorți), apoi se oprește și așteaptă. Plafonul nu e o precauție teoretică:
+pe modelul local, după vreo 8–10 replici autonome personajele intră în buclă și se repetă —
+discuția se oprește înainte de asta, nu după.
+
+- **Vorbește unul singur la fiecare replică**, nu tot consiliul. Cine e chemat cu `@` și n-a
+  apucat încă să răspundă are 80% șanse să ia cuvântul; restul de 20% se împarte la ceilalți.
+  Cine tocmai a vorbit nu începe și replica următoare.
+- **Cel ales are voie să tacă**, ca oriunde altundeva. Dacă scrie `PAS`, replica nu se pierde:
+  se încearcă altcineva, dar nu la nesfârșit — sunt câteva încercări, apoi replica se consumă.
+- **Cât am text în caseta de input, nimeni nu vorbește.** Se reia când trimit sau când golesc
+  caseta. O replică deja începută se termină — nu dispare din mijlocul propoziției pentru că am
+  atins o tastă.
+- **Mesajul meu anulează** replicile rămase și pornește o rundă nouă: am prioritate și aici.
+- Totul se întâmplă în conversația deschisă. Dacă trec la alta, cea părăsită tace.
+
+Pauza dintre replici e de câteva secunde până la câteva zeci — cât să se simtă ca o discuție
+care curge, nu ca o ședință care a înghețat.
+
 ## 4. Vibe-ul
 
 Dezbatere serioasă, dar prietenoasă — consultanță reală, nu ceartă de dragul conflictului.

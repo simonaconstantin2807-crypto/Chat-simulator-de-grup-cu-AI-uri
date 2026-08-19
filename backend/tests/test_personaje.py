@@ -1,6 +1,8 @@
 import random
 
 from personaje import (
+    alege_vorbitorul,
+    chemati_fara_raspuns,
     gaseste_mentiuni,
     incarca_personaje,
     obligati_sa_raspunda,
@@ -222,3 +224,102 @@ def test_pe_termen_lung_intrusii_aduc_o_cincime_de_replica():
         intrusi += len(obligati) - 1
 
     assert 0.17 < intrusi / 1000 < 0.23
+
+
+# ---------- conversatia care continua singura ----------
+
+
+def _replica_de_la(id_personaj: str, text: str) -> dict:
+    return {"eu": False, "personajId": id_personaj, "nume": id_personaj.capitalize(), "text": text}
+
+
+def _mesajul_meu(text: str) -> dict:
+    return {"eu": True, "nume": "Simona", "text": text}
+
+
+def test_cel_chemat_care_n_a_ajuns_la_cuvant_ramane_asteptat():
+    mesaje = [_mesajul_meu("@Maestra ce zici de AB?"), _replica_de_la("clienta", "eu zic că da")]
+
+    assert chemati_fara_raspuns(mesaje, PERSONAJE) == ["maestra"]
+
+
+def test_chemarea_se_stinge_cand_cel_chemat_vorbeste():
+    mesaje = [
+        _mesajul_meu("@Maestra ce zici de AB?"),
+        _replica_de_la("maestra", "AB-ul nu se poate simula"),
+    ]
+
+    assert chemati_fara_raspuns(mesaje, PERSONAJE) == []
+
+
+def test_chemarea_facuta_de_un_personaj_conteaza_la_fel_ca_a_mea():
+    mesaje = [_replica_de_la("maestra", "aici o întreb pe @Operatoarea")]
+
+    assert chemati_fara_raspuns(mesaje, PERSONAJE) == ["operatoarea"]
+
+
+def test_cine_se_cheama_pe_sine_nu_se_asteapta_pe_sine():
+    """Altfel un personaj care isi scrie numele si-ar da singur prioritate la replica urmatoare."""
+    mesaje = [_replica_de_la("maestra", "cum spuneam eu, @Maestra, mai devreme")]
+
+    assert chemati_fara_raspuns(mesaje, PERSONAJE) == []
+
+
+def test_optzeci_la_suta_din_replicile_libere_merg_la_cei_chemati():
+    """Regula 80/20 din sesiunea 11: vorbeste unul singur, cel mai probabil unul dintre chemati."""
+    sub_prag = alege_vorbitorul(PERSONAJE, ["maestra"], sansa=_sorti(0.79, 0.0))
+    peste_prag = alege_vorbitorul(PERSONAJE, ["maestra"], sansa=_sorti(0.81, 0.0))
+
+    assert sub_prag == "maestra"
+    assert peste_prag == "antreprenoarea"  # primul dintre ceilalti
+
+
+def test_cine_tocmai_a_vorbit_nu_ia_din_nou_cuvantul():
+    """Doua replici la rand de la acelasi personaj n-ar mai fi o conversatie de grup."""
+    consiliu = list(PERSONAJE)
+
+    ales = alege_vorbitorul(PERSONAJE, [], exclusi=[consiliu[0]], sansa=_sorti(0.0))
+
+    assert ales == consiliu[1]
+
+
+def test_fara_niciun_chemat_alegerea_e_dintre_toti_ceilalti():
+    """Nimeni nefiind asteptat, nu se mai imparte nimic: o singura aruncare, pentru vorbitor."""
+    consiliu = list(PERSONAJE)
+
+    assert alege_vorbitorul(PERSONAJE, [], sansa=_sorti(0.0)) == consiliu[0]
+    assert alege_vorbitorul(PERSONAJE, [], sansa=_sorti(0.999)) == consiliu[-1]
+
+
+def test_cand_toti_ceilalti_au_fost_incercati_vorbeste_cel_chemat():
+    """Ultimul ramas nu mai are cu cine imparti procentele - nu se arunca niciun zar pentru grup."""
+    ceilalti = [p for p in PERSONAJE if p != "maestra"]
+
+    ales = alege_vorbitorul(PERSONAJE, ["maestra"], exclusi=ceilalti, sansa=_sorti(0.0))
+
+    assert ales == "maestra"
+
+
+def test_nu_mai_e_nimeni_de_ales_cand_toti_au_incercat():
+    assert alege_vorbitorul(PERSONAJE, [], exclusi=list(PERSONAJE), sansa=_sorti()) is None
+
+
+def test_procentul_de_optzeci_ramane_valid_cand_adaug_personaje():
+    consiliu = _consiliu(9)
+
+    sub_prag = alege_vorbitorul(consiliu, ["p7"], sansa=_sorti(0.79, 0.0))
+    peste_prag = alege_vorbitorul(consiliu, ["p7"], sansa=_sorti(0.81, 0.0))
+
+    assert sub_prag == "p7"
+    assert peste_prag == "p1"
+
+
+def test_pe_termen_lung_chematii_iau_patru_replici_din_cinci():
+    zaruri = random.Random(2026).random
+    ai_chematului = 0
+
+    for _ in range(1000):
+        if alege_vorbitorul(PERSONAJE, ["maestra"], sansa=zaruri) == "maestra":
+            ai_chematului += 1
+
+    assert 0.77 < ai_chematului / 1000 < 0.83
