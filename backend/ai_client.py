@@ -5,8 +5,11 @@ import ollama
 MODEL_IMPLICIT = "gemma4:e2b"
 
 # Cat timp tine Ollama modelul in memorie intre mesaje. Implicit sunt 5 minute, iar dupa ele
-# urmatorul mesaj asteapta ~13s doar reincarcarea celor 6.7 GB de pe disc (masurat: 13.10s la
-# rece vs 1.11s la cald). O ora acopera o sesiune de consiliu fara reincarcari.
+# urmatorul mesaj asteapta ~13s doar reincarcarea de pe disc. O ora acopera o sesiune de
+# consiliu fara reincarcari. Recontrolat pe 19 august 2026, dupa trecerea inapoi pe GPU:
+# 12.22s la rece vs 0.87s la cald, deci intarzierea evitata e aceeasi. Cat sta incarcat, ocupa
+# 1.59 GB din cei 6 GB de VRAM (nu 5.57 GB din RAM-ul de sistem, ca pe vremea rularii pe CPU),
+# asa ca ora asta nu mai apasa pe memorie.
 KEEP_ALIVE = "1h"
 
 # gemma4:e2b e un model "thinking": implicit isi scrie intai rationamentul intern - sute de
@@ -90,10 +93,17 @@ def _construieste_cerere(
     mesaje.extend(context or [])
     mesaje.append({"role": "user", "content": mesaj})
 
-    # gemma4:e2b crapa la incarcarea pe GPU (bug CUDA cu driverul curent) - ruleaza pe CPU pana
-    # se rezolva. Verificat din nou cu Ollama 0.32.9 / driver 610.88: llama-server iese cu
-    # 0xc0000409 si "CUDA error: shared object initialization failed", indiferent de num_ctx.
-    optiuni = {"num_gpu": 0, "num_predict": MAX_TOKENI}
+    # Aici a stat `num_gpu: 0`, pentru ca pe Ollama 0.32.9 gemma4:e2b crapa la incarcarea pe GPU
+    # (llama-server iesea cu 0xc0000409 si "CUDA error: shared object initialization failed",
+    # indiferent de num_ctx). Bug-ul e rezolvat in Ollama 0.32.14, verificat pe 19 august 2026 cu
+    # acelasi driver NVIDIA 610.88 si RTX 4050 Laptop 6 GB: modelul intra intreg in VRAM (1.59 GB,
+    # 100% GPU), raspunde corect, 84.5 tokeni/s, incarcare 12-16s.
+    #
+    # Sa nu se reintroduca workaround-ul: pe CPU acelasi model cerea 5.57 GB in RAM de sistem
+    # (din 15.19 GB totali) si se incarca in ~98s, iar cand RAM-ul era ocupat de alte aplicatii
+    # alocarea esua - "unable to allocate CPU buffer" - si llama-server crapa in rafala (4 crash-uri
+    # in 47s pe 13 august, 2 pe 17 august), cu cate un dump de ~228 MB de fiecare data.
+    optiuni = {"num_predict": MAX_TOKENI}
     if temperatura is not None:
         optiuni["temperature"] = temperatura
 
@@ -105,7 +115,7 @@ def preincarca(model: str = MODEL_IMPLICIT) -> None:
     ollama.chat(
         model=model,
         messages=[{"role": "user", "content": "ok"}],
-        options={"num_gpu": 0, "num_predict": 1},
+        options={"num_predict": 1},
         keep_alive=KEEP_ALIVE,
         think=GANDIRE,
     )
