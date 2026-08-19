@@ -42,9 +42,9 @@ exemplu una din secțiunea „Întrebări deschise", sau o decizie de design nou
 Cine răspunde — ca într-un chat de grup adevărat, unde nu sare toată lumea la fiecare mesaj.
 Toate personajele sunt întrebate la fiecare mesaj, dar vorbește doar cine are ceva de spus:
 
-- **Cine are ceva de adăugat, vorbește. Cine nu, tace.** Personajul care n-are o opinie
-  fundamentată pe subiect, sau căruia altcineva i-a luat vorba din gură, scrie `PAS` — un
-  semnal care nu ajunge niciodată pe ecran și nu se salvează în istoric.
+- **Cine are ceva de adăugat, vorbește. Cine nu, tace.** Criteriul e domeniul fiecăruia, scris
+  în system prompt-ul lui: dacă mesajul nu ține de el, scrie `PAS` — un semnal care nu ajunge
+  niciodată pe ecran și nu se salvează în istoric.
 - **Cei chemați cu `@NumePersonaj` nu au voie să tacă.** Mențiunea e o convocare, nu o
   probabilitate.
 - **Nemenționații își împart 20%** — șansa de a fi obligați să contribuie chiar dacă n-aveau
@@ -54,12 +54,18 @@ Toate personajele sunt întrebate la fiecare mesaj, dar vorbește doar cine are 
 - **Mențiune făcută de un personaj** — `@NumePersonaj` scris de altcineva cheamă la fel ca
   `@NumePersonaj` scris de mine: cel chemat trece în fața cozii, răspunde imediat și pierde
   dreptul de a tăcea. Nimeni nu vorbește de două ori în aceeași rundă.
+- **Fără nicio mențiune, sorții obligă un singur vorbitor.** Nimeni nefiind chemat, toți ar
+  putea scrie `PAS` și mesajul meu ar rămâne fără niciun răspuns pe ecran. Unul e tras la sorți
+  și n-are voie să tacă; ceilalți decid fiecare pentru el. Dacă până la urmă tot n-a vorbit nimeni, pagina
+  o spune într-o linie — tăcerea consiliului nu trebuie confundată cu o defecțiune.
 
 Fiecare răspunde **ultimei replici din chat**, nu neapărat mesajului meu — al doilea vorbitor
 reacționează la primul, așa cum curge o discuție reală. Restul conversației îi rămâne în
 context, deci poate contrazice și ceva spus mai devreme.
 
-Pot interveni oricând — nu aștept să se termine runda.
+Pot interveni oricând — nu aștept să se termine runda. Mesajul meu nou taie runda în curs:
+replica pe jumătate scrisă dispare de pe ecran și nu se salvează, iar cele deja terminate rămân.
+Nu se suprapun două runde, iar pe server generarea se oprește odată cu runda anulată.
 
 Personajele nu caută informația live (fără RAG, fără tool calling) — fiecare are, în system
 prompt-ul lui, esența conceptului din document și unghiul lui de interes. Nu știu tot, dar

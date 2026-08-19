@@ -4,9 +4,10 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.concurrency import iterate_in_threadpool
 
 import istoric
 from ai_client import fara_pas, preincarca, trimite_mesaj, trimite_mesaj_stream
@@ -26,6 +27,46 @@ INDEMN_OBLIGAT = (
 
 # Aruncarea cu banul pentru cei nementionati, scoasa la nivel de modul ca testele s-o poata fixa.
 zaruri = random.random
+
+# Numarul rundei in curs. Am prioritate fata de consiliu (M9): mesajul meu nou incepe o runda
+# noua, iar cea veche se opreste cand vede ca numarul ei nu mai e cel curent. Fara asta, doua
+# runde ar scrie in acelasi ecran si in acelasi istoric.
+_runda_curenta = 0
+
+# Acelasi lacat numeroteaza rundele si scrie in istoric, ca o runda tocmai anulata sa nu apuce
+# sa strecoare o replica dupa mesajul care a anulat-o.
+_lacat_runde = threading.Lock()
+
+
+def incepe_runda(mesaj_utilizator: dict) -> int:
+    """Salveaza mesajul meu si intoarce numarul rundei noi. De aici, cea veche e anulata."""
+    global _runda_curenta
+    with _lacat_runde:
+        _runda_curenta += 1
+        istoric.salveaza_mesaj(mesaj_utilizator)
+        return _runda_curenta
+
+
+def runda_anulata(numar: int) -> bool:
+    return numar != _runda_curenta
+
+
+def salveaza_replica(numar: int, mesaj: dict) -> bool:
+    """Replica intra in istoric doar daca runda ei mai e cea curenta."""
+    with _lacat_runde:
+        if runda_anulata(numar):
+            return False
+        istoric.salveaza_mesaj(mesaj)
+        return True
+
+
+async def trebuie_oprita(numar: int, cerere: Request) -> bool:
+    """Runda si-a pierdut rostul: ori am scris peste ea, ori pagina nu mai asculta.
+
+    A doua verificare tine de tokeni: fara ea, un tab inchis ar lasa modelul sa scrie pana la
+    capat o runda pe care n-o mai vede nimeni.
+    """
+    return runda_anulata(numar) or await cerere.is_disconnected()
 
 
 def incalzeste_modelul() -> None:
@@ -106,16 +147,19 @@ def istoricul():
 
 
 @app.post("/api/mesaje")
-def trimite(mesaj: MesajIntrare):
+async def trimite(mesaj: MesajIntrare, cerere: Request):
     coada = ordinea_vorbitorilor(mesaj.text, PERSONAJE)
     obligati = set(obligati_sa_raspunda(mesaj.text, PERSONAJE, sansa=zaruri))
+    numar = incepe_runda({**UTILIZATOR, "eu": True, "text": mesaj.text})
 
-    istoric.salveaza_mesaj({**UTILIZATOR, "eu": True, "text": mesaj.text})
-
-    def runda():
+    async def runda():
         au_vorbit = set()
+        a_vorbit_cineva = False
 
         while coada:
+            if await trebuie_oprita(numar, cerere):
+                return
+
             id_personaj = coada.pop(0)
             if id_personaj in au_vorbit:
                 continue
@@ -143,9 +187,13 @@ def trimite(mesaj: MesajIntrare):
                     temperatura=personaj["temperaturaRecomandata"],
                     context=context,
                 )
+                # Asteptarea dupa model se muta pe alt fir: bucla de evenimente ramane libera
+                # sa primeasca mesajul meu urmator, altfel "am prioritate" ar fi doar o vorba.
                 # `fara_pas` inghite raspunsul celui care n-are nimic de adaugat, deci un text
                 # gol aici inseamna "a ales sa taca", nu "a raspuns cu nimic".
-                for bucata in fara_pas(bucati):
+                async for bucata in iterate_in_threadpool(fara_pas(bucati)):
+                    if await trebuie_oprita(numar, cerere):
+                        return
                     text_complet += bucata
                     yield _eveniment({"tip": "text", "text": bucata})
             except Exception:
@@ -156,7 +204,11 @@ def trimite(mesaj: MesajIntrare):
                 yield _eveniment({"tip": "tace"})
                 continue
 
-            istoric.salveaza_mesaj(_mesaj_de_salvat(personaj, text_complet))
+            # Daca intre timp am scris peste runda, replica nu se salveaza: pagina a sters deja
+            # bula pe jumatate scrisa, iar ce nu se vede n-are voie sa reapara la refresh.
+            if not salveaza_replica(numar, _mesaj_de_salvat(personaj, text_complet)):
+                return
+            a_vorbit_cineva = True
             yield _eveniment({"tip": "gata"})
 
             # Cine e chemat pe nume raspunde, chiar daca chemarea vine de la un personaj, nu de
@@ -168,5 +220,12 @@ def trimite(mesaj: MesajIntrare):
                     coada.remove(chemat)
                 coada.insert(pas, chemat)
                 obligati.add(chemat)
+
+        # Sortii obliga un vorbitor cand nu e nicio mentiune (M9), dar pe un mesaj fara continut
+        # („Multumesc, notat.") si cel obligat tace uneori - masurat 15 din 25 pe gemma4:e2b, cu
+        # sase formulari de INDEMN_OBLIGAT incercate. Atunci ecranul ar ramane neschimbat si nu
+        # s-ar distinge de un server picat, asa ca runda goala se anunta.
+        if not a_vorbit_cineva:
+            yield _eveniment({"tip": "consiliul_tace"})
 
     return StreamingResponse(runda(), media_type="application/x-ndjson")

@@ -1,4 +1,5 @@
 import ollama
+import pytest
 
 from ai_client import (
     KEEP_ALIVE,
@@ -14,6 +15,7 @@ from ai_client import (
 )
 
 
+@pytest.mark.ollama
 def test_trimite_mesaj_returneaza_text_nevid():
     raspuns = trimite_mesaj("Raspunde cu un singur cuvant: OK.")
 
@@ -21,6 +23,7 @@ def test_trimite_mesaj_returneaza_text_nevid():
     assert raspuns.strip() != ""
 
 
+@pytest.mark.ollama
 def test_trimite_mesaj_stream_returneaza_text_nevid():
     bucati = list(trimite_mesaj_stream("Raspunde cu un singur cuvant: OK.", "Maestra"))
     raspuns = "".join(bucati)
@@ -60,6 +63,7 @@ def test_cererea_opreste_gandirea_modelului():
     assert cerere["think"] is False
 
 
+@pytest.mark.ollama
 def test_modelul_scrie_text_vizibil_nu_doar_rationament():
     """Cu gandirea pornita, modelul consuma sute de tokeni interni si nu ajunge la raspuns."""
     bucati = list(trimite_mesaj_stream("Ce parere ai despre AB simulat pe poza?", "Maestra"))
@@ -67,6 +71,7 @@ def test_modelul_scrie_text_vizibil_nu_doar_rationament():
     assert "".join(bucati).strip() != ""
 
 
+@pytest.mark.ollama
 def test_preincarca_aduce_modelul_in_memorie():
     preincarca()
 
@@ -75,6 +80,7 @@ def test_preincarca_aduce_modelul_in_memorie():
     assert any(m.model == MODEL_IMPLICIT for m in incarcate)
 
 
+@pytest.mark.ollama
 def test_raspunsul_nu_depaseste_plafonul_de_tokeni():
     bucati = list(trimite_mesaj_stream("Descrie in detaliu istoria margelelor Miyuki.", "Maestra"))
 

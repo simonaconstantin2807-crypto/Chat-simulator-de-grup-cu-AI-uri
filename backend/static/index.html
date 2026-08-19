@@ -109,6 +109,13 @@
     line-height: 1.6;
   }
 
+  .tacere {
+    align-self: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-style: italic;
+  }
+
   .mesaj {
     display: flex;
     gap: 10px;
@@ -246,8 +253,6 @@
     cursor: pointer;
   }
 
-  button:disabled { opacity: 0.5; cursor: default; }
-
   .indiciu {
     font-size: 0.75rem;
     color: var(--muted);
@@ -312,7 +317,7 @@
     <div class="sugestii" id="sugestii" hidden></div>
     <form id="form-mesaj">
       <input type="text" id="input-mesaj" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
-      <button type="submit" id="buton-trimite">Trimite</button>
+      <button type="submit">Trimite</button>
     </form>
     <div class="indiciu" id="indiciu"></div>
   </div>
@@ -325,11 +330,12 @@
   const indiciu = document.getElementById("indiciu");
   const form = document.getElementById("form-mesaj");
   const input = document.getElementById("input-mesaj");
-  const buton = document.getElementById("buton-trimite");
 
   let personaje = [];
   let utilizator = { nume: "Simona", avatar: "🙋", culoare: "#3D3A36" };
   let indexSugestie = 0;
+  // Frana rundei in curs: scriu peste ea oricand, fara sa astept consiliul.
+  let rundaCurenta = null;
 
   // ---------- identitate ----------
 
@@ -635,7 +641,16 @@
     }
   }
 
+  function anuleazaRunda() {
+    // Serverul afla din conexiunea inchisa ca poate opri generarea; nu mai arde tokeni pentru
+    // o runda pe care n-o mai vede nimeni.
+    rundaCurenta?.abort();
+    rundaCurenta = null;
+  }
+
   async function ruleazaRunda(text) {
+    const frana = new AbortController();
+    rundaCurenta = frana;
     let curent = adaugaIndicator({ nume: "", avatar: "💬", culoare: "#ccc", culoareFundal: "#fff" });
     let textCurent = "";
 
@@ -644,6 +659,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
+        signal: frana.signal,
       });
 
       for await (const eveniment of evenimente(raspuns.body)) {
@@ -651,6 +667,18 @@
           if (!curent) curent = adaugaIndicator(eveniment);
           else completeazaIdentitatea(curent, eveniment);
           textCurent = "";
+          continue;
+        }
+
+        if (eveniment.tip === "consiliul_tace") {
+          // Nimeni n-a avut ce raspunde. Vine cand nu mai e nicio bula pe ecran, deci se
+          // trateaza inaintea gardei de mai jos; altfel ecranul ar ramane neschimbat si n-ai
+          // putea distinge tacerea consiliului de un server picat.
+          const nota = document.createElement("div");
+          nota.className = "tacere";
+          nota.textContent = "Consiliul n-a avut ce adăuga.";
+          conversatie.append(nota);
+          laFinal();
           continue;
         }
 
@@ -674,7 +702,15 @@
         }
       }
     } catch (eroare) {
+      if (frana.signal.aborted) {
+        // Am scris peste runda asta. Replica pe jumatate scrisa n-a ajuns in istoric, deci
+        // n-are ce cauta nici pe ecran - la refresh oricum n-ar mai fi acolo.
+        curent?.element.remove();
+        return;
+      }
       console.error(eroare);
+    } finally {
+      if (rundaCurenta === frana) rundaCurenta = null;
     }
 
     // Daca fluxul s-a intrerupt inainte de primul cuvant, nu lasam punctele sa se invarta la infinit.
@@ -684,26 +720,25 @@
     }
   }
 
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const text = input.value.trim();
-    if (!text || input.disabled) return;
+    if (!text) return;
+
+    // Am prioritate fata de consiliu: runda in curs se taie inainte sa inceapa alta, ca sa nu
+    // scrie doua runde peste acelasi ecran.
+    anuleazaRunda();
 
     adaugaMesaj({ ...utilizator, eu: true, text });
     input.value = "";
     inchideSugestiile();
     actualizeazaIndiciu();
-    input.disabled = true;
-    buton.disabled = true;
+    input.focus();
 
-    try {
-      await ruleazaRunda(text);
-    } finally {
-      input.disabled = false;
-      buton.disabled = false;
-      input.focus();
-    }
+    // Fara `await`: caseta ramane libera cat vorbeste consiliul.
+    ruleazaRunda(text);
   });
+
 </script>
 
 </body>

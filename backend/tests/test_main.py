@@ -1,6 +1,8 @@
+import asyncio
 import json
 import threading
 
+import pytest
 from fastapi.testclient import TestClient
 
 import istoric
@@ -8,6 +10,16 @@ import main
 from main import app
 
 client = TestClient(app)
+
+
+class _Pagina:
+    """Conexiunea cu pagina, vazuta de server: deschisa sau inchisa de utilizatoare."""
+
+    def __init__(self, inchisa: bool):
+        self.inchisa = inchisa
+
+    async def is_disconnected(self) -> bool:
+        return self.inchisa
 
 
 def _istoric_izolat(monkeypatch, tmp_path):
@@ -42,6 +54,20 @@ def _toti_tac(monkeypatch, in_afara_de: str = ""):
     """Toti scriu PAS, mai putin cine e numit - cazul obisnuit intr-un chat linistit."""
     nume = [p["nume"] for p in main.PERSONAJE.values()]
     return _model_fals(monkeypatch, {n: "PAS" for n in nume if n != in_afara_de})
+
+
+def _mesaj_nou_peste_runda(monkeypatch):
+    """Modelul e intrerupt de un mesaj de-al meu, picat exact intre doua bucati de replica."""
+    cereri = []
+
+    def raspunde(mesaj, nume_personaj, sistem=None, temperatura=None, context=None):
+        cereri.append(nume_personaj)
+        yield "început de replică"
+        main.incepe_runda({**main.UTILIZATOR, "eu": True, "text": "de fapt, altceva"})
+        yield " și restul replicii"
+
+    monkeypatch.setattr(main, "trimite_mesaj_stream", raspunde)
+    return cereri
 
 
 def _evenimente(text: str) -> list[dict]:
@@ -89,6 +115,7 @@ def test_pagina_chat_se_incarca():
     assert "text/html" in raspuns.headers["content-type"]
 
 
+@pytest.mark.ollama
 def test_health_confirma_modelul():
     raspuns = client.get("/api/health")
 
@@ -166,6 +193,28 @@ def test_pagina_afla_ca_personajul_a_tacut(monkeypatch, tmp_path):
 
     assert sum(1 for e in evenimente if e["tip"] == "tace") == len(main.PERSONAJE) - 1
     assert sum(1 for e in evenimente if e["tip"] == "gata") == 1
+
+
+def test_pagina_afla_cand_nu_vorbeste_nimeni(monkeypatch, tmp_path):
+    """Un mesaj la care n-are nimeni ce raspunde („Mulțumesc, notat.") nu are voie sa lase
+    ecranul neschimbat: asa nu se distinge de un server picat."""
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _toti_tac(monkeypatch)
+
+    evenimente = _evenimente("Mulțumesc, notat.")
+
+    assert evenimente[-1] == {"tip": "consiliul_tace"}
+
+
+def test_daca_a_vorbit_macar_unul_nu_se_anunta_tacere(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _toti_tac(monkeypatch, in_afara_de="Operatoarea")
+
+    evenimente = _evenimente("@Operatoarea câte grame ies dintr-un tub?")
+
+    assert not [e for e in evenimente if e["tip"] == "consiliul_tace"]
 
 
 def test_mentionatul_nu_are_voie_sa_taca(monkeypatch, tmp_path):
@@ -337,6 +386,7 @@ def test_eroarea_unui_personaj_nu_opreste_runda(monkeypatch, tmp_path):
     assert _vorbitori(evenimente) == ["maestra"]  # runda a mers mai departe peste eroare
 
 
+@pytest.mark.ollama
 def test_raspunsul_real_al_modelului_ajunge_bucata_cu_bucata(monkeypatch, tmp_path):
     _istoric_izolat(monkeypatch, tmp_path)
     _zaruri(monkeypatch)
@@ -369,3 +419,52 @@ def test_istoric_intoarce_mesajele_salvate_in_ordine(monkeypatch, tmp_path):
 
     assert raspuns.status_code == 200
     assert raspuns.json() == [mesaj1, mesaj2]
+
+
+def test_mesajul_meu_nou_opreste_runda_in_curs(monkeypatch, tmp_path):
+    """M9: nu astept sa termine consiliul ca sa fiu ascultata - runda veche se taie pe loc."""
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _mesaj_nou_peste_runda(monkeypatch)
+
+    evenimente = _evenimente("@Maestra ce zici de AB?")
+
+    assert [e["tip"] for e in evenimente] == ["personaj", "text"]
+
+
+def test_runda_anulata_nu_mai_intreaba_personajele_urmatoare(monkeypatch, tmp_path):
+    """Altfel s-ar arde tokeni pentru o runda pe care n-o mai vede nimeni."""
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    cereri = _mesaj_nou_peste_runda(monkeypatch)
+
+    _evenimente("@Maestra ce zici de AB?")
+
+    assert cereri == ["Maestra"]
+
+
+def test_replica_ramasa_pe_jumatate_nu_ajunge_in_istoric(monkeypatch, tmp_path):
+    """Ce s-a sters de pe ecran nu are voie sa reapara la refresh."""
+    _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _mesaj_nou_peste_runda(monkeypatch)
+
+    _evenimente("@Maestra ce zici de AB?")
+    istoricul = client.get("/api/mesaje").json()
+
+    assert [m["text"] for m in istoricul] == ["@Maestra ce zici de AB?", "de fapt, altceva"]
+
+
+def test_runda_se_opreste_cand_pagina_nu_mai_asculta(monkeypatch, tmp_path):
+    """Un tab inchis n-are voie sa lase modelul sa scrie mai departe."""
+    _istoric_izolat(monkeypatch, tmp_path)
+    numar = main.incepe_runda({**main.UTILIZATOR, "eu": True, "text": "o întrebare"})
+
+    assert asyncio.run(main.trebuie_oprita(numar, _Pagina(inchisa=True))) is True
+
+
+def test_runda_curenta_merge_mai_departe_cat_timp_pagina_asculta(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+    numar = main.incepe_runda({**main.UTILIZATOR, "eu": True, "text": "o întrebare"})
+
+    assert asyncio.run(main.trebuie_oprita(numar, _Pagina(inchisa=False))) is False

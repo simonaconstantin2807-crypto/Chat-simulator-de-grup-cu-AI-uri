@@ -1,13 +1,10 @@
 import random
 
-import pytest
-
 from personaje import (
     gaseste_mentiuni,
     incarca_personaje,
     obligati_sa_raspunda,
     ordinea_vorbitorilor,
-    probabilitati,
     profil_public,
 )
 
@@ -64,6 +61,25 @@ def test_fiecare_stie_ca_poate_sa_taca(monkeypatch=None):
         assert "PAS" in personaj["systemPrompt"], f"{personaj['nume']} nu stie sa taca"
 
 
+def test_regula_de_tacere_vine_dupa_toate_celelalte_reguli():
+    """Pozitia conteaza pe un model de 2B: pusa intre reguli, se pierde (masurat 0 taceri din 25)."""
+    for personaj in PERSONAJE.values():
+        prompt = personaj["systemPrompt"]
+        ultima_regula = prompt.rindex("\n- ")
+
+        assert prompt.index("PAS") > ultima_regula, f"{personaj['nume']} o are prea devreme"
+
+
+def test_fiecare_isi_stie_domeniul_din_rol():
+    """Criteriul de tacere e domeniul concret din `rol`, nu o judecata abstracta.
+
+    Un model de 2B nu poate cantari daca are o opinie fundamentata; poate compara un subiect
+    cu o eticheta scurta.
+    """
+    for personaj in PERSONAJE.values():
+        assert f"Domeniul tău: {personaj['rol']}." in personaj["systemPrompt"]
+
+
 def test_vocile_sunt_diferite_prin_temperatura():
     temperaturi = {p["temperaturaRecomandata"] for p in PERSONAJE.values()}
 
@@ -94,54 +110,57 @@ def test_mentiunea_necunoscuta_e_ignorata():
 
 
 def test_mentionatii_raspund_sigur():
-    sanse = probabilitati("@Maestra și @Programatorul, ce ziceți?", PERSONAJE)
+    """Mentiunea e o convocare: cei chemati intra fara sa se arunce nimic pentru ei."""
+    obligati = obligati_sa_raspunda(
+        "@Maestra și @Programatorul, ce ziceți?", PERSONAJE, sansa=_sorti(1.0, 1.0, 1.0)
+    )
 
-    assert sanse["maestra"] == 1.0
-    assert sanse["programatorul"] == 1.0
+    assert obligati == ["maestra", "programatorul"]
 
 
 def test_nementionatii_impart_intre_ei_douazeci_la_suta():
-    sanse = probabilitati("@Maestra și @Programatorul, ce ziceți?", PERSONAJE)
-    taciti = ["antreprenoarea", "clienta", "operatoarea"]
+    """Doi chemati, trei tacuti: pragul fiecarui tacut e 0.2/3, nu 0.2."""
+    text = "@Maestra și @Programatorul, ce ziceți?"
+    prag = 0.2 / 3
 
-    assert sum(sanse[id_personaj] for id_personaj in taciti) == pytest.approx(0.2)
-    assert sanse["clienta"] == pytest.approx(0.2 / 3)
+    sub_prag = obligati_sa_raspunda(text, PERSONAJE, sansa=_sorti(prag - 0.001, 1.0, 1.0))
+    peste_prag = obligati_sa_raspunda(text, PERSONAJE, sansa=_sorti(prag + 0.001, 1.0, 1.0))
+
+    assert sub_prag == ["maestra", "programatorul", "antreprenoarea"]
+    assert peste_prag == ["maestra", "programatorul"]
 
 
 def test_un_singur_mentionat_lasa_douazeci_la_suta_celorlalti_patru():
-    """Exemplul din cerinta: 80% pentru cel chemat, 5% pentru fiecare dintre ceilalti patru."""
-    sanse = probabilitati("@Programatorul e fezabil?", PERSONAJE)
+    """Exemplul din cerinta: cel chemat raspunde sigur, fiecare dintre ceilalti patru are 5%."""
+    text = "@Programatorul e fezabil?"
 
-    assert sanse["programatorul"] == 1.0
-    assert sanse["maestra"] == pytest.approx(0.05)
+    sub_prag = obligati_sa_raspunda(text, PERSONAJE, sansa=_sorti(0.049, 1.0, 1.0, 1.0))
+    peste_prag = obligati_sa_raspunda(text, PERSONAJE, sansa=_sorti(0.051, 1.0, 1.0, 1.0))
+
+    assert sub_prag == ["programatorul", "antreprenoarea"]
+    assert peste_prag == ["programatorul"]
 
 
 def test_procentele_se_recalculeaza_cand_adaug_personaje():
     """Nimic nu e hardcodat pe consiliul de azi: la 9 personaje, cei 8 taciti impart tot 20%."""
     consiliu = _consiliu(9)
+    prag = 0.2 / 8
 
-    sanse = probabilitati("@P4 ce zici?", consiliu)
-    taciti = [id_personaj for id_personaj in consiliu if id_personaj != "p4"]
+    ceilalti = [1.0] * 7
+    sub_prag = obligati_sa_raspunda("@P4 ce zici?", consiliu, sansa=_sorti(prag - 0.001, *ceilalti))
+    peste_prag = obligati_sa_raspunda("@P4 ce zici?", consiliu, sansa=_sorti(prag + 0.001, *ceilalti))
 
-    assert sanse["p4"] == 1.0
-    assert sum(sanse[id_personaj] for id_personaj in taciti) == pytest.approx(0.2)
-    assert sanse["p1"] == pytest.approx(0.2 / 8)
-
-
-def test_fara_mentiune_intra_tot_consiliul_cu_certitudine():
-    """Sedinta convocata integral (SPEC §3): nu exista grup de 80%, deci nu se trage la sorti."""
-    sanse = probabilitati("Cum arătăm prețurile?", PERSONAJE)
-
-    assert set(sanse) == set(PERSONAJE)
-    assert all(sansa == 1.0 for sansa in sanse.values())
+    assert sub_prag == ["p4", "p1"]
+    assert peste_prag == ["p4"]
 
 
 def test_toti_mentionati_nu_lasa_pe_nimeni_de_tras_la_sorti():
     text = "@Maestra @Antreprenoarea @Clienta @Operatoarea @Programatorul, toți!"
 
-    sanse = probabilitati(text, PERSONAJE)
+    # `_sorti()` fara valori crapa daca se arunca vreun zar - deci nici nu se arunca.
+    obligati = obligati_sa_raspunda(text, PERSONAJE, sansa=_sorti())
 
-    assert all(sansa == 1.0 for sansa in sanse.values())
+    assert set(obligati) == set(PERSONAJE)
 
 
 def test_toti_sunt_intrebati_mentionatii_primii():
@@ -174,9 +193,23 @@ def test_tacutul_care_castiga_aruncarea_e_obligat_sa_contribuie():
     assert obligati == ["programatorul", "antreprenoarea"]
 
 
-def test_fara_mentiune_nimeni_nu_e_obligat():
-    """Nu exista grup chemat, deci fiecare decide singur daca are ceva de spus."""
-    assert obligati_sa_raspunda("Cum arătăm prețurile?", PERSONAJE, sansa=_sorti(0.0)) == []
+def test_fara_mentiune_e_obligat_unul_singur_tras_la_sorti():
+    """Nimeni chemat inseamna ca toti pot scrie PAS si raman fara raspuns pe ecran (M9).
+
+    Sortii scot exact un vorbitor obligat; ceilalti isi pastreaza dreptul de a tacea.
+    """
+    text = "Cum arătăm prețurile?"
+    consiliu = list(PERSONAJE)
+
+    assert obligati_sa_raspunda(text, PERSONAJE, sansa=_sorti(0.0)) == [consiliu[0]]
+    assert obligati_sa_raspunda(text, PERSONAJE, sansa=_sorti(0.999)) == [consiliu[-1]]
+
+
+def test_aruncarea_maxima_nu_iese_din_consiliu():
+    """`random.random()` nu da niciodata 1.0, dar un fals de test da - runda nu are voie sa crape."""
+    assert obligati_sa_raspunda("Cum arătăm prețurile?", PERSONAJE, sansa=_sorti(1.0)) == [
+        list(PERSONAJE)[-1]
+    ]
 
 
 def test_pe_termen_lung_intrusii_aduc_o_cincime_de_replica():

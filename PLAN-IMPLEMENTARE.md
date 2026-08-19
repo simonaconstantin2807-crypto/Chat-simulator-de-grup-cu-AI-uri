@@ -77,8 +77,9 @@ etapă ulterioară a MVP-ului. **Depășit de M7.**
 
 ## M6 — Memorie și polish
 
-Conversația supraviețuiește la refresh. Pot scrie oricând, chiar peste un personaj care încă
-„scrie" — runda în curs se anulează curat, nu se suprapun răspunsuri. Responsive pe telefon.
+Conversația supraviețuiește la refresh. Responsive pe telefon. **Parțial:** promisiunea „pot
+scrie oricând, chiar peste un personaj care încă «scrie»" n-a fost implementată — caseta se
+bloca până se termina runda. **Terminat abia la M9.**
 
 ## M7 — Cine răspunde: 80% chemații, 20% restul
 
@@ -108,6 +109,54 @@ voie să tacă — primesc `INDEMN_OBLIGAT` în plus la system prompt.
 
 Costul, asumat: un mesaj cu o singură mențiune înseamnă acum un apel la model pentru fiecare
 personaj, nu unul singur. Tăcerea nu se poate afla fără să întrebi.
+
+## M9 — Am prioritate față de consiliu
+
+Ce promitea M6 și nu făcea: caseta rămâne liberă cât vorbește consiliul, iar mesajul meu nou
+taie runda în curs. Bula pe jumătate scrisă dispare de pe ecran și nu ajunge în istoric, cele
+deja terminate rămân. Nu se suprapun două runde: fiecare rundă își știe numărul, iar cea veche
+se oprește când numărul nu mai e al ei (`incepe_runda`, `runda_anulata` din `backend/main.py`).
+
+Pe server, o rundă pe care n-o mai vede nimeni nu mai arde tokeni: pagina întrerupe fluxul cu
+`AbortController`, iar generarea se oprește la prima bucată de după închiderea conexiunii
+(`trebuie_oprita`). Așteptarea după model stă pe alt fir, ca bucla de evenimente să fie liberă
+să primească mesajul care anulează runda — altfel „am prioritate" ar fi rămas o vorbă.
+
+Curățat tot aici: fără nicio mențiune nu era nimeni obligat, deci toate cele 5 personaje puteau
+scrie `PAS` și mesajul rămânea fără niciun răspuns pe ecran. Acum sorții scot exact un vorbitor
+obligat — consiliul nu răspunde cu tăcere totală, dar nici nu se adună tot la orice mesaj, cum
+făcea până la M8. Funcția `probabilitati` a dispărut: ramura ei „fără mențiune → toți 1.0" nu
+era folosită de nimeni și spunea altceva decât se întâmpla.
+
+## M10 — Tăcerea, ca s-o poată duce și un model de 2B
+
+Regulile M7–M8 erau corecte în cod și invizibile în practică: pe `gemma4:e2b`, la o întrebare
+tehnică adresată cu `@Programatorul`, răspundeau toate cele 5. PAS măsurat: **0 din 25**.
+Testele treceau, pentru că verificau mecanica, nu modelul.
+
+Trei schimbări în system prompt-uri (`personaje.json`, plus fișierele `personaj-*.md`):
+
+1. **Regula de tăcere e ultima**, după toate celelalte, ca bloc separat — nu un punct la
+   mijlocul listei, unde se pierde.
+2. **Imperativă, nu permisivă**: „răspunsul tău este exact acest cuvânt: PAS. Nu explica, nu te
+   scuza, nu saluta." în loc de „nu ești obligat să vorbești... scrie doar PAS".
+3. **Criteriu concret în loc de judecată abstractă**: „Domeniul tău: <rol>." — un model de 2B nu
+   poate cântări dacă „are o opinie fundamentată", dar poate compara subiectul cu o etichetă.
+
+Măsurat pe 5 rulări × 5 personaje, înainte → după: pe subiect străin, întrebare de decizie
+**0/25 → 25/25** tăceri; pe subiect străin, întrebare de cultură generală **0/25 → 10/25**
+(modelul răspunde enciclopedic la ce știe, indiferent de rol — rămâne limita cunoscută); pe
+domeniul propriu **0/25 → 0/25**, deci nimeni nu tace când nu trebuie. În runde adevărate,
+întrebarea tehnică cu `@Programatorul` a trecut de la 5 vorbitori din 5 la 2–3.
+
+`INDEMN_OBLIGAT` a rămas neschimbat: șase formulări măsurate, cea existentă e singura care ține
+`@mențiunea` peste noua regulă (0/25 tăceri). Variantele care nu numesc „PAS" pierd catastrofal
+(până la 19/25), iar cele care îl numesc de două ori îl fac mai proeminent, nu mai slab.
+
+Ce n-a putut fi reparat din prompt: pe un mesaj fără conținut („Mulțumesc, notat."), 15 din 25
+tac chiar și obligate. Sorții din M9 obligă un vorbitor, dar dacă tocmai el tace, runda iese
+goală. Atunci serverul trimite `{"tip":"consiliul_tace"}` și pagina scrie o singură linie
+discretă — tăcerea consiliului nu mai arată ca un server picat.
 
 ## Definiția de „gata"
 

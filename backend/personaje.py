@@ -39,25 +39,6 @@ def gaseste_mentiuni(text: str, personaje: dict) -> list[str]:
     return gasite
 
 
-def probabilitati(text: str, personaje: dict) -> dict[str, float]:
-    """Sansa fiecarui personaj de a fi *obligat* sa raspunda, dupa mentiunile din text.
-
-    Cine e chemat pe nume raspunde sigur (1.0). Restul isi impart `PARTEA_NEMENTIONATILOR`.
-    Cine nu e obligat tot e intrebat - doar ca poate sa taca, daca n-are nimic de adaugat.
-    """
-    mentionati = set(gaseste_mentiuni(text, personaje))
-    if not mentionati:
-        return {id_personaj: 1.0 for id_personaj in personaje}
-
-    taciti = [id_personaj for id_personaj in personaje if id_personaj not in mentionati]
-    sansa_tacutului = PARTEA_NEMENTIONATILOR / len(taciti) if taciti else 0.0
-
-    return {
-        id_personaj: 1.0 if id_personaj in mentionati else sansa_tacutului
-        for id_personaj in personaje
-    }
-
-
 def ordinea_vorbitorilor(text: str, personaje: dict) -> list[str]:
     """Cine e intrebat si in ce ordine: intai cei chemati pe nume, apoi restul.
 
@@ -68,6 +49,15 @@ def ordinea_vorbitorilor(text: str, personaje: dict) -> list[str]:
     return mentionati + [id_personaj for id_personaj in personaje if id_personaj not in mentionati]
 
 
+def _tras_la_sorti(candidati: list[str], sansa) -> str:
+    """Unul dintre candidati, ales cu aceeasi aruncare injectata ca restul deciziilor.
+
+    `sansa()` da un numar in [0, 1), dar un fals de test poate da chiar 1.0; `min` tine
+    indicele in lista in loc sa lase runda sa crape.
+    """
+    return candidati[min(int(sansa() * len(candidati)), len(candidati) - 1)]
+
+
 def obligati_sa_raspunda(text: str, personaje: dict, sansa=random.random) -> list[str]:
     """Cine trebuie sa contribuie, chiar daca n-avea nimic pregatit.
 
@@ -75,16 +65,18 @@ def obligati_sa_raspunda(text: str, personaje: dict, sansa=random.random) -> lis
     Zarurile se arunca *inainte* de a intreba personajul, tocmai ca sa nu ajungem sa cerem o
     replica de la cineva care tocmai a spus ca n-are nimic de adaugat.
 
+    Fara nicio mentiune nu e nimeni chemat, deci toate cinci ar putea scrie PAS si mesajul meu
+    ar ramane fara niciun raspuns pe ecran. De aceea sortii scot atunci exact un vorbitor
+    obligat: consiliul nu raspunde cu tacere totala, dar nici nu se aduna tot la orice mesaj,
+    cum facea inainte de M8.
+
     `sansa` e injectata ca testele sa nu depinda de zaruri reale.
     """
     mentionati = gaseste_mentiuni(text, personaje)
     if not mentionati:
-        return []
+        return [_tras_la_sorti(list(personaje), sansa)]
 
-    sanse = probabilitati(text, personaje)
-    castigatori = [
-        id_personaj
-        for id_personaj in personaje
-        if id_personaj not in mentionati and sansa() < sanse[id_personaj]
-    ]
-    return mentionati + castigatori
+    taciti = [id_personaj for id_personaj in personaje if id_personaj not in mentionati]
+    sansa_tacutului = PARTEA_NEMENTIONATILOR / len(taciti) if taciti else 0.0
+
+    return mentionati + [id_personaj for id_personaj in taciti if sansa() < sansa_tacutului]
