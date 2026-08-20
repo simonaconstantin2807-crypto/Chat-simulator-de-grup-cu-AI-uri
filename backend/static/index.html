@@ -431,6 +431,44 @@
   .sugestie small { color: var(--muted); }
   .sugestie.activa { background: var(--fundal); }
 
+  /* Memoria lunga: stransa intr-un rand cat timp n-o cer, ca sa nu manance din inaltimea
+     conversatiei - pe telefon e cel mai scump loc din pagina. */
+  .memorie {
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 24px 12px;
+  }
+
+  .cap-memorie {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .cap-memorie:hover { color: var(--cerneala); }
+  .cap-memorie .sageata { font-size: 0.6rem; }
+
+  .text-memorie {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--border);
+    border-radius: 0 8px 8px 0;
+    background: var(--bg);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+
   /* Sub 900px nu mai incape o a doua coloana fara sa strice latimea bulelor, asa ca panoul
      devine sertar peste conversatie: se deschide din butonul din header si se inchide la
      alegerea unei conversatii. Layout-ul de chat ramane neatins, exact ca inainte. */
@@ -463,7 +501,7 @@
   }
 
   @media (max-width: 600px) {
-    .titlu, .roster { padding-left: 14px; padding-right: 14px; }
+    .titlu, .roster, .memorie { padding-left: 14px; padding-right: 14px; }
     .titlu .text { flex-direction: column; align-items: flex-start; gap: 2px; }
     .chip .eticheta small { display: none; }
     main { padding: 14px; }
@@ -495,6 +533,12 @@
       </div>
     </div>
     <div class="roster" id="roster"></div>
+    <div class="memorie" id="memorie" hidden>
+      <button type="button" class="cap-memorie" id="buton-memorie" aria-expanded="false">
+        <span class="sageata">▸</span> Ce ține minte consiliul
+      </button>
+      <div class="text-memorie" id="text-memorie" hidden></div>
+    </div>
   </header>
 
   <main id="conversatie"></main>
@@ -519,6 +563,9 @@
   const butonPanou = document.getElementById("buton-panou");
   const butonNoua = document.getElementById("buton-conversatie-noua");
   const roster = document.getElementById("roster");
+  const memorie = document.getElementById("memorie");
+  const butonMemorie = document.getElementById("buton-memorie");
+  const textMemorie = document.getElementById("text-memorie");
   const sugestii = document.getElementById("sugestii");
   const indiciu = document.getElementById("indiciu");
   const form = document.getElementById("form-mesaj");
@@ -527,6 +574,8 @@
   let personaje = [];
   let utilizator = { nume: "Simona", avatar: "🙋", culoare: "#3D3A36" };
   let indexSugestie = 0;
+  // Panoul de memorie ramane cum l-am lasat cand trec de la o conversatie la alta.
+  let memoriaDeschisa = false;
   // Frana rundei in curs: scriu peste ea oricand, fara sa astept consiliul.
   let rundaCurenta = null;
 
@@ -710,6 +759,28 @@
     const cautat = eticheta.toLowerCase();
     return personaje.find((p) => p.nume.toLowerCase() === cautat || p.id.toLowerCase() === cautat);
   }
+
+  // ---------- memoria lunga ----------
+
+  /** Rezumatul sedintei, asa cum il tine consiliul. Fara text, randul nici nu apare. */
+  function arataRezumat(text) {
+    memorie.hidden = !text;
+    textMemorie.textContent = text || "";
+    textMemorie.hidden = !memoriaDeschisa;
+    butonMemorie.setAttribute("aria-expanded", String(memoriaDeschisa));
+    butonMemorie.firstElementChild.textContent = memoriaDeschisa ? "▾" : "▸";
+  }
+
+  async function incarcaRezumat() {
+    if (!conversatieActiva) return arataRezumat("");
+    const raspuns = await fetch(`/api/conversatii/${conversatieActiva}/rezumat`);
+    arataRezumat((await raspuns.json()).rezumat);
+  }
+
+  butonMemorie.addEventListener("click", () => {
+    memoriaDeschisa = !memoriaDeschisa;
+    arataRezumat(textMemorie.textContent);
+  });
 
   // ---------- scroll ----------
 
@@ -954,6 +1025,7 @@
 
   async function incarcaIstoric() {
     conversatie.textContent = "";
+    await incarcaRezumat();
     if (!conversatieActiva) return;
 
     const raspuns = await fetch(`/api/conversatii/${conversatieActiva}/mesaje`);
@@ -1042,6 +1114,13 @@
           rundaAutonoma = eveniment.runda;
           replicileRamase = eveniment.replici;
           pauzaSecunde = eveniment.pauzaSecunde;
+          continue;
+        }
+
+        if (eveniment.tip === "rezumat") {
+          // Consiliul si-a refacut memoria la capatul rundei. Nu e o replica, deci nu atinge
+          // nicio bula - doar randul din header.
+          arataRezumat(eveniment.text);
           continue;
         }
 

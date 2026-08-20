@@ -85,6 +85,7 @@ def _construieste_cerere(
     sistem: str | None,
     temperatura: float | None,
     context: list[dict] | None = None,
+    max_tokeni: int = MAX_TOKENI,
 ) -> dict:
     mesaje = []
     if sistem:
@@ -103,7 +104,7 @@ def _construieste_cerere(
     # (din 15.19 GB totali) si se incarca in ~98s, iar cand RAM-ul era ocupat de alte aplicatii
     # alocarea esua - "unable to allocate CPU buffer" - si llama-server crapa in rafala (4 crash-uri
     # in 47s pe 13 august, 2 pe 17 august), cu cate un dump de ~228 MB de fiecare data.
-    optiuni = {"num_predict": MAX_TOKENI}
+    optiuni = {"num_predict": max_tokeni}
     if temperatura is not None:
         optiuni["temperature"] = temperatura
 
@@ -127,8 +128,14 @@ def trimite_mesaj(
     sistem: str | None = None,
     temperatura: float | None = None,
     context: list[dict] | None = None,
+    max_tokeni: int = MAX_TOKENI,
 ) -> str:
-    cerere = _construieste_cerere(mesaj, sistem, temperatura, context)
+    """Un raspuns intreg, nu in bucati: pentru ce nu ajunge pe ecran cat se scrie.
+
+    `max_tokeni` e aici pentru rezumatul din `rezumat.py`, care are nevoie de mai mult decat
+    cele 1-3 propozitii ale unei replici.
+    """
+    cerere = _construieste_cerere(mesaj, sistem, temperatura, context, max_tokeni)
     raspuns = ollama.chat(model=model, **cerere)
     return raspuns["message"]["content"]
 

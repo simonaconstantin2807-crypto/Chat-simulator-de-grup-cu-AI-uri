@@ -231,6 +231,54 @@ absurde pentru o ședință de 20 de minute, deci 5–20s.
 Aruncările sunt injectate ca peste tot: `main.zaruri` pentru numărul de replici și pentru alegerea
 vorbitorului, `alege_vorbitorul(..., sansa=)` în teste.
 
+## M13 — Memorie lungă prin rezumat rulant
+
+`MESAJE_IN_CONTEXT` e 24. La mesajul 40, primele 16 dispăruseră complet: nimeni nu mai avea de
+unde ști ce s-a decis la începutul ședinței, iar scopul din `SPEC.md` — „ies din conversație cu o
+decizie" — nu se ținea nicăieri *ca decizie*. Măsurat pe `gemma4:e2b`, cu decizia împinsă în afara
+ferestrei: la întrebarea „unde am decis să generăm preview-ul?", Programatorul a răspuns pe dos,
+**4 din 4** rulări. Cu rezumatul, **4 din 4** corect.
+
+Ce iese din fereastră intră într-un rezumat de cel mult `RANDURI_REZUMAT` rânduri
+(`backend/rezumat.py`): `Subiect:`, `Decizii:` și câte o poziție de personaj. Se actualizează
+incremental — secretarul primește rezumatul de până atunci plus doar lotul tocmai ieșit, nu
+ședința de la capăt — și se reface la capătul rundei, pe alt fir, unde cele 2–4 secunde nu se
+simt. Un lot e `MESAJE_PE_REZUMAT`, adică o rundă de consiliu întreg: un apel în plus la fiecare
+mesaj s-ar fi văzut. Rezumatul stă în fișierul conversației, deci ține la restart, și e al ei.
+
+**Modelul mic nu ține formatul, deci nu i se cere să-l țină.** Pe o ședință reală de 101 mesaje,
+răspunsul brut avea între 5 și 14 rânduri și repeta același personaj de două-trei ori, cu poziții
+diferite. Structura se impune determinist, în `scurteaza`: ultima poziție per nume, `Subiect` și
+`Decizii` în față, tăiat la `RANDURI_REZUMAT`. Două formulări din șablon sunt și ele măsurate:
+fără „cel mult trei", rândul `Decizii` ajungea la vreo nouăzeci de cuvinte și mânca bugetul de
+tokeni; fără „adunat", modelul îngheța prima decizie și nu mai adăuga niciodată alta.
+
+**Unde stă blocul a fost decis de măsurătoare, nu de estetică.** `gemma4:e2b` n-are rol `system`
+nativ: Ollama lipește system prompt-ul de primul mesaj `user`. Un bloc pus în fața contextului
+îngroapă la mijlocul acelui mesaj tocmai ce trebuie să fie ultimul — regula de tăcere și
+`INDEMN_OBLIGAT` de la M10. Clienta, chemată pe nume pe un subiect străin, a tăcut la 15 rulări:
+0/15 fără memorie, **14/15 cu blocul primul în context**, 9/15 cu el ultimul în context, 1–3/15
+lipit la coada system prompt-ului, cum e acum. Celelalte două reguli rămân neatinse: pe subiect
+străin, nechemată, tot 15/15 tăceri; pe domeniul ei, tot 0/15. Și antetul contează: varianta
+explicită „Nu e o replică din chat…" duce înapoi la 13/15, pentru că ultima propoziție dinaintea
+indemnului trage spre tăcere dacă e negativă. Antetul rămâne scurt și afirmativ. Cele două teste
+din `backend/tests/test_tacerea.py` marcate `ollama` sunt garda care prinde regresia — testele
+deterministe n-o pot vedea.
+
+O eroare de model nu strică ce se ținea deja minte: lotul rămâne nerezumat și se reia la runda
+următoare. Un consiliu care își uită deciziile pentru că Ollama a clipit ar fi mai rău decât unul
+fără memorie lungă.
+
+În interfață, rezumatul e un rând pliabil sub personaje, „Ce ține minte consiliul". Se încarcă la
+deschiderea conversației și se împrospătează singur din evenimentul `{"tip":"rezumat"}`, la
+capătul rundei.
+
+**Limita rămasă, pe modelul ăsta:** rândul care îmi atribuie mie o poziție e uneori doar ultima
+mea întrebare, iar la buget de tokeni epuizat ultimul rând poate ieși tăiat la mijloc de cuvânt
+(o dată la opt rescrieri, la 300 de tokeni; de-asta `MAX_TOKENI_REZUMAT` e 360). Se repară singur
+la rescrierea următoare. Subiectul și deciziile — partea pentru care există rezumatul — ies
+corect.
+
 ## Definiția de „gata"
 
 1. Pornesc totul cu un singur pas (sau doi, dacă backend + frontend sunt separate) — nu o
@@ -252,3 +300,5 @@ a intrat la M8, dar în forma ei simplă: fiecare decide pentru el, prin `PAS`. 
 citește runda și împarte cuvântul. Personajele scriu și între mesajele mele, dar numai de la M12
 încoace și numai în limita de acolo: 2–4 replici după runda mea, apoi tăcere până scriu eu din
 nou. Conversațiile multiple (M11) n-au adus nici cont, nici bază de date: tot local, tot în JSON.
+Memoria lungă (M13) nu e RAG: nu caută nimic, nu indexează nimic — comprimă doar ce a ieșit din
+fereastra propriei conversații.

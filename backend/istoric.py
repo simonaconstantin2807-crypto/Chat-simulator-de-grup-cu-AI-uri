@@ -37,6 +37,10 @@ MESAJE_IN_CONTEXT = 24
 CUVINTE_IN_TITLU = 6
 LITERE_IN_TITLU = 26
 
+# Ce nu iese in lista de conversatii. Lista se cere la fiecare mesaj trimis, ca titlul si ordinea
+# sa fie proaspete, deci e un cuprins: nici arhiva, nici memoria fiecarei sedinte.
+CAMPURI_ASCUNSE_IN_LISTA = ("mesaje", "rezumat", "rezumatPanaLa")
+
 # Id-ul vine din URL si devine nume de fisier, deci se accepta doar ce nu poate iesi din folder.
 TIPAR_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -116,13 +120,17 @@ def citeste_conversatie(id_conversatie: str) -> dict | None:
 
 
 def _cuprins(conversatie: dict) -> dict:
-    """Un rand din lista: tot despre conversatie, mai putin mesajele ei.
+    """Un rand din lista: tot despre conversatie, mai putin mesajele si rezumatul ei.
 
-    Lista se cere la fiecare mesaj trimis, ca titlul si ordinea sa fie proaspete; daca ar carA
+    Lista se cere la fiecare mesaj trimis, ca titlul si ordinea sa fie proaspete; daca ar cara
     si arhiva dupa ea, ar trimite in pagina toata discutia de fiecare data.
     """
     return {
-        **{camp: valoare for camp, valoare in conversatie.items() if camp != "mesaje"},
+        **{
+            camp: valoare
+            for camp, valoare in conversatie.items()
+            if camp not in CAMPURI_ASCUNSE_IN_LISTA
+        },
         "numarMesaje": len(conversatie.get("mesaje", [])),
     }
 
@@ -157,6 +165,33 @@ def salveaza_mesaj(id_conversatie: str, mesaj: dict) -> None:
         if not conversatie["titlu"] and mesaj.get("eu"):
             conversatie["titlu"] = titlu_din_mesaj(mesaj.get("text", ""))
 
+        _scrie(conversatie)
+
+
+def rezumatul(id_conversatie: str) -> tuple[str, int]:
+    """Memoria lunga a conversatiei: textul si cate mesaje sunt deja stranse in el.
+
+    Al doilea numar tine actualizarea incrementala: de la el incolo incepe ce inca n-a fost
+    rezumat. Conversatiile scrise inainte de memoria lunga n-au niciunul din cele doua campuri,
+    deci pornesc de la zero fara migrare.
+    """
+    conversatie = citeste_conversatie(id_conversatie) or {}
+    return conversatie.get("rezumat", ""), conversatie.get("rezumatPanaLa", 0)
+
+
+def salveaza_rezumat(id_conversatie: str, text: str, pana_la: int) -> None:
+    """Scrie memoria in fisierul conversatiei, ca sa supravietuiasca restartului ca si mesajele.
+
+    Nu atinge `actualizatLa`: ordinea din lista o dau mesajele mele, iar rezumatul se reface in
+    fundal - o conversatie n-are de ce sa sara in capul listei fara ca eu sa fi scris in ea.
+    """
+    with _lacat:
+        conversatie = citeste_conversatie(id_conversatie)
+        if not conversatie:
+            return
+
+        conversatie["rezumat"] = text
+        conversatie["rezumatPanaLa"] = pana_la
         _scrie(conversatie)
 
 
@@ -236,5 +271,8 @@ def context_pentru(
     el si ce au zis ceilalti, altfel regula "cele mai bune momente sunt cand contrazici pe
     altcineva" din system prompt-uri n-are cum sa fie dusa la capat. Ce s-a discutat in alta
     conversatie nu ajunge aici: doua sedinte de consiliu diferite nu se aud una pe alta.
+
+    Ce a iesit din fereastra nu se pierde, dar nu trece pe aici: memoria lunga intra in system
+    prompt, prin `rezumat.bloc_pentru_prompt`. Motivul e masurat, e scris acolo.
     """
     return [_replica(mesaj, personaj_id) for mesaj in incarca_istoric(id_conversatie)[-limita:]]

@@ -65,6 +65,9 @@ lui — singurul lucru pe care testele deterministe nu-l pot garanta.
   tocmai a vorbit nu începe și replica următoare, iar cel ales poate să tacă — atunci se încearcă
   altcineva. Câte replici, cât se așteaptă între ele și câte încercări are una: `REPLICI_AUTONOME`,
   `PAUZA_SECUNDE` și `INCERCARI_PE_REPLICA` din `backend/main.py`.
+- Ce iese din fereastra de context nu se pierde: se strânge într-un rezumat scurt, pe care îl
+  citești din rândul **Ce ține minte consiliul**, sub personaje. Apare abia după ce ședința
+  depășește fereastra și se împrospătează la capătul unei runde.
 - Cât timp ai text în caseta de input, nimeni nu vorbește de la sine. Se reia când trimiți sau
   când golești caseta.
 - Poți scrie oricând, chiar peste un personaj care încă scrie: mesajul tău taie runda în curs.
@@ -81,6 +84,7 @@ lui — singurul lucru pe care testele deterministe nu-l pot garanta.
 | PATCH  | `/api/conversatii/{id}`         | Redenumește; corpul e `{"titlu": "..."}`.                          |
 | DELETE | `/api/conversatii/{id}`         | Șterge; răspunde cu lista rămasă (mereu măcar una).                |
 | GET    | `/api/conversatii/{id}/mesaje`  | Istoricul conversației.                                            |
+| GET    | `/api/conversatii/{id}/rezumat` | Memoria lungă: `{"rezumat": "...", "panaLa": n}`.                  |
 | POST   | `/api/conversatii/{id}/mesaje`  | Trimite un mesaj; răspunde cu flux NDJSON (vezi mai jos).          |
 | POST   | `/api/conversatii/{id}/continuare` | O replică pe care consiliul și-o dă singur; corpul e `{"runda": n}`. |
 | GET    | `/api/health`                   | Confirmă că modelul răspunde.                                      |
@@ -93,6 +97,7 @@ Fluxul de la `POST /api/conversatii/{id}/mesaje` are câte un obiect JSON pe lin
 răspuns), `{"tip":"gata"}` (mesaj terminat), `{"tip":"tace"}` (n-a avut ce adăuga — pagina
 scoate bula de pe ecran), `{"tip":"consiliul_tace"}` (n-a vorbit nimeni în toată runda),
 `{"tip":"eroare","text":"..."}` și, la sfârșitul unei runde în care a vorbit cineva,
+`{"tip":"rezumat","text":"..."}` (doar când memoria lungă chiar s-a schimbat) urmat de
 `{"tip":"continua","runda":n,"replici":3,"pauzaSecunde":[5,20]}` — câte replici mai duce
 conversația singură, cât să aștepte pagina între ele și din ce rundă vin.
 
@@ -113,6 +118,22 @@ Propriile replici rămân fără prefix, ca să nu învețe să-și semneze mesa
 
 Contextul se citește la rândul fiecăruia, nu la începutul rundei: al doilea vorbitor aude ce a
 zis primul și îi răspunde lui, nu neapărat mie.
+
+### Memoria lungă
+
+Ce iese din fereastră se comprimă într-un rezumat de cel mult `RANDURI_REZUMAT` rânduri
+(`backend/rezumat.py`): `Subiect:`, `Decizii:` și câte o poziție de personaj. Se rescrie când s-au
+strâns `MESAJE_PE_REZUMAT` replici nerezumate, la capătul unei runde, și se rescrie *incremental*
+— modelul primește rezumatul de până atunci plus doar lotul nou, nu toată ședința.
+
+Rezumatul se lipește la coada system prompt-ului, prin `bloc_pentru_prompt`, nu în lista de
+mesaje. Nu e o preferință: `gemma4:e2b` n-are rol `system` nativ, iar un bloc pus în fața
+contextului îngroapă `INDEMN_OBLIGAT` la mijlocul primului mesaj și strică regula de la M10 —
+cifrele sunt în docstring și în `PLAN-IMPLEMENTARE.md`. Cele două teste `ollama` din
+`tests/test_tacerea.py` păzesc exact asta.
+
+Rezumatul stă în fișierul conversației, lângă mesaje, deci ține la restart și rămâne al ei. Dacă
+modelul nu răspunde, ce se ținea minte rămâne neatins și lotul se reia la runda următoare.
 
 ## Ce rămâne pentru etapa următoare
 

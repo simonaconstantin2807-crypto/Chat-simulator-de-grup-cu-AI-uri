@@ -109,8 +109,30 @@ discuția se oprește înainte de asta, nu după.
 Pauza dintre replici e de câteva secunde până la câteva zeci — cât să se simtă ca o discuție
 care curge, nu ca o ședință care a înghețat.
 
+## 3.4 Ce ține minte consiliul
+
+Personajele văd ultimele câteva zeci de mesaje, nu toată ședința. Pe la al patruzecilea mesaj,
+primele nu mai există pentru nimeni — iar fără nimic la mijloc, Maestra se poate contrazice față
+de ce a zis la început și n-are cine să observe.
+
+Ce iese din fereastră nu se pierde: se strânge într-un rezumat scurt, de câteva rânduri —
+subiectul, deciziile luate până acum și poziția pe care a rămas fiecare. Rezumatul intră în
+promptul fiecărui personaj, ca bloc fix înaintea replicilor recente și marcat ca memorie, nu ca
+replică din chat. Se actualizează din mers: la fiecare rescriere pleacă spre model doar replicile
+care tocmai au ieșit din fereastră, plus rezumatul de până atunci, nu ședința de la capăt. Se
+reface la capătul unei runde, nu la fiecare mesaj — acolo nu așteaptă nimeni un cuvânt pe ecran.
+
+Rezumatul stă în fișierul conversației, ca și mesajele, deci e tot acolo după restart, și e al ei:
+o conversație nu vede memoria alteia. Îl citesc în pagină, într-un rând pliabil sub personaje —
+„Ce ține minte consiliul" — fără să deschid fișierul.
+
+Pe modelul local iese folosibil, dar telegrafic: prinde subiectul și ține minte deciziile, iar
+rândul care îmi atribuie mie o poziție e uneori doar ultima mea întrebare. Deciziile — partea
+pentru care există — sunt corecte.
+
 ## 4. Vibe-ul
 
 Dezbatere serioasă, dar prietenoasă — consultanță reală, nu ceartă de dragul conflictului.
 Fiecare personaj vine cu argumente concrete, legate de document, nu cu generalități vagi. Ideal
-ies din conversație cu o decizie sau cel puțin cu compromisurile puse clar pe masă.
+ies din conversație cu o decizie sau cel puțin cu compromisurile puse clar pe masă — iar decizia
+rămâne scrisă, în rezumatul de la 3.4, nu doar undeva în josul discuției.

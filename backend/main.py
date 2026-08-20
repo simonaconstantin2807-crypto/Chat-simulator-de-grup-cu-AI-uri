@@ -7,9 +7,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from starlette.concurrency import iterate_in_threadpool
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
 import istoric
+import rezumat
 from ai_client import fara_pas, preincarca, trimite_mesaj, trimite_mesaj_stream
 from personaje import (
     alege_vorbitorul,
@@ -228,6 +229,20 @@ def istoricul(id_conversatie: str):
     return _conversatie_sau_404(id_conversatie)["mesaje"]
 
 
+@app.get("/api/conversatii/{id_conversatie}/rezumat")
+def memoria(id_conversatie: str):
+    """Ce tine minte consiliul din partea de sedinta care nu mai incape in context.
+
+    Pagina il cere la deschiderea conversatiei; in timpul unei runde il afla din evenimentul
+    `rezumat`, fara sa mai intrebe.
+    """
+    conversatie = _conversatie_sau_404(id_conversatie)
+    return {
+        "rezumat": conversatie.get("rezumat", ""),
+        "panaLa": conversatie.get("rezumatPanaLa", 0),
+    }
+
+
 async def replica_personajului(
     id_conversatie: str,
     personaj: dict,
@@ -290,6 +305,8 @@ async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
     coada = ordinea_vorbitorilor(mesaj.text, PERSONAJE)
     obligati = set(obligati_sa_raspunda(mesaj.text, PERSONAJE, sansa=zaruri))
     numar = incepe_runda(id_conversatie, {**UTILIZATOR, "eu": True, "text": mesaj.text})
+    # O data pe runda, nu la fiecare personaj: memoria se reface abia la capatul ei.
+    memoria_in_prompt = rezumat.bloc_pentru_prompt(id_conversatie)
 
     async def runda():
         au_vorbit = set()
@@ -305,7 +322,9 @@ async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
             au_vorbit.add(id_personaj)
             personaj = PERSONAJE[id_personaj]
 
-            sistem = personaj["systemPrompt"]
+            # Memoria intra inaintea indemnului, ca INDEMN_OBLIGAT sa ramana ultimul lucru
+            # pe care il citeste modelul - de asta atarna toata regula de la M10.
+            sistem = personaj["systemPrompt"] + memoria_in_prompt
             if id_personaj in obligati:
                 sistem += INDEMN_OBLIGAT
 
@@ -344,18 +363,29 @@ async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
             yield _eveniment({"tip": "consiliul_tace"})
             return
 
+        # Nu se promite nimic dupa o runda peste care am scris deja: nici memorie refacuta,
+        # nici replici autonome.
+        if await trebuie_oprita(numar, cerere):
+            return
+
+        # Memoria lunga se reface acum, la capatul rundei. Apelul cere 2-4s pe gemma4:e2b, deci
+        # aici e singurul loc unde nu se simte: replica urmatoare oricum vine dupa o pauza de
+        # secunde. Pe alt fir, ca bucla de evenimente sa ramana libera pentru mesajul meu -
+        # altfel "am prioritate" ar cadea exact pe cele cateva secunde de rezumat.
+        memoria_noua = await run_in_threadpool(rezumat.actualizeaza_rezumat, id_conversatie)
+        if memoria_noua:
+            yield _eveniment({"tip": "rezumat", "text": memoria_noua})
+
         # De aici incolo conversatia poate merge singura cateva replici: pagina afla cate si cat
-        # sa astepte intre ele, apoi le cere una cate una. Nu se promite nimic dupa o runda in
-        # care n-a vorbit nimeni (n-avea cine sa continue) sau peste care am scris deja.
-        if not await trebuie_oprita(numar, cerere):
-            yield _eveniment(
-                {
-                    "tip": "continua",
-                    "runda": numar,
-                    "replici": cate_replici_autonome(sansa=zaruri),
-                    "pauzaSecunde": list(PAUZA_SECUNDE),
-                }
-            )
+        # sa astepte intre ele, apoi le cere una cate una.
+        yield _eveniment(
+            {
+                "tip": "continua",
+                "runda": numar,
+                "replici": cate_replici_autonome(sansa=zaruri),
+                "pauzaSecunde": list(PAUZA_SECUNDE),
+            }
+        )
 
     return StreamingResponse(runda(), media_type="application/x-ndjson")
 
@@ -395,8 +425,9 @@ async def continua(id_conversatie: str, date: ContinuareIntrare, cerere: Request
 
             sfarsit = None
             # Fara INDEMN_OBLIGAT: nimeni nu l-a chemat pe nume, deci are voie sa scrie PAS.
+            sistem = personaj["systemPrompt"] + rezumat.bloc_pentru_prompt(id_conversatie)
             async for eveniment in replica_personajului(
-                id_conversatie, personaj, numar, cerere, personaj["systemPrompt"], mesaje[-1]["text"]
+                id_conversatie, personaj, numar, cerere, sistem, mesaje[-1]["text"]
             ):
                 sfarsit = eveniment["tip"]
                 yield _eveniment(eveniment)

@@ -125,3 +125,14 @@ def test_fereastra_acopera_mai_multe_runde_de_consiliu():
     o_runda = 1 + len(incarca_personaje())
 
     assert istoric.MESAJE_IN_CONTEXT >= 3 * o_runda
+
+
+def test_memoria_lunga_nu_intra_printre_replicile_din_context(monkeypatch, tmp_path):
+    """Rezumatul e fundal, nu replica: sta in system prompt, iar contextul ramane discutia."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    istoric.salveaza_rezumat(conversatie, "Subiect: AB-ul", 6)
+    istoric.salveaza_mesaj(conversatie, {"eu": True, "nume": "Simona", "text": "Și prețul?"})
+
+    assert istoric.context_pentru(conversatie, "maestra") == [
+        {"role": "user", "content": "Și prețul?"}
+    ]

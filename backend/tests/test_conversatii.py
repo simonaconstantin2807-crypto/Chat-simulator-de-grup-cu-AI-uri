@@ -230,3 +230,27 @@ def test_o_conversatie_care_nu_exista_nu_da_niciun_mesaj(monkeypatch, tmp_path, 
 
     assert istoric.citeste_conversatie(id_inventat) is None
     assert istoric.incarca_istoric(id_inventat) == []
+
+
+def test_lista_de_conversatii_nu_cara_rezumatul_dupa_ea(monkeypatch, tmp_path):
+    """Lista se cere la fiecare mesaj trimis; e un cuprins, nu memoria fiecarei sedinte."""
+    _stocare_izolata(monkeypatch, tmp_path)
+    conversatie = istoric.creeaza_conversatie()["id"]
+    istoric.salveaza_rezumat(conversatie, "Subiect: AB-ul", 6)
+
+    listata = next(c for c in istoric.listeaza_conversatii() if c["id"] == conversatie)
+
+    assert "rezumat" not in listata
+    assert "rezumatPanaLa" not in listata
+
+
+def test_rezumatul_nu_schimba_ordinea_conversatiilor(monkeypatch, tmp_path):
+    """Ordinea o dau mesajele mele. Memoria se reface in fundal, nu e o atingere de-a mea."""
+    _stocare_izolata(monkeypatch, tmp_path)
+    conversatie = istoric.creeaza_conversatie()["id"]
+    istoric.creeaza_conversatie()
+    inainte = [c["id"] for c in istoric.listeaza_conversatii()]
+
+    istoric.salveaza_rezumat(conversatie, "Subiect: AB-ul", 6)
+
+    assert [c["id"] for c in istoric.listeaza_conversatii()] == inainte

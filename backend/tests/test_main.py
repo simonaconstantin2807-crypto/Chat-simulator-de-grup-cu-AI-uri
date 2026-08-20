@@ -806,3 +806,129 @@ def test_o_conversatie_care_nu_exista_nu_poate_fi_continuata(monkeypatch, tmp_pa
         "POST", "/api/conversatii/nascocita/continuare", json={"runda": 1}
     ) as raspuns:
         assert raspuns.status_code == 404
+
+
+# ---------- memoria lunga: rezumatul sedintei ----------
+
+
+def _secretar_fals(monkeypatch, text: str | None = "Subiect: prețurile"):
+    """Rezumatul, fara model: `None` inseamna „n-a fost nimic de rezumat"."""
+    apeluri = []
+
+    def rezuma(id_conversatie):
+        apeluri.append(id_conversatie)
+        return text
+
+    monkeypatch.setattr(main.rezumat, "actualizeaza_rezumat", rezuma)
+    return apeluri
+
+
+def test_pot_sa_vad_ce_tine_minte_consiliul(monkeypatch, tmp_path):
+    """Scopul rezumatului e sa stiu ce s-a decis; daca nu-l pot citi, n-am de unde sti."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    istoric.salveaza_rezumat(conversatie, "Subiect: AB-ul\nDecizii: preview pe server", 6)
+
+    raspuns = client.get(f"/api/conversatii/{conversatie}/rezumat").json()
+
+    assert raspuns["rezumat"] == "Subiect: AB-ul\nDecizii: preview pe server"
+
+
+def test_o_sedinta_scurta_n_are_inca_ce_tine_minte(monkeypatch, tmp_path):
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+
+    assert client.get(f"/api/conversatii/{conversatie}/rezumat").json()["rezumat"] == ""
+
+
+def test_rezumatul_unei_conversatii_care_nu_exista_da_404(monkeypatch, tmp_path):
+    _istoric_izolat(monkeypatch, tmp_path)
+
+    assert client.get("/api/conversatii/nascocita/rezumat").status_code == 404
+
+
+def test_pagina_afla_la_capatul_rundei_ce_a_retinut_consiliul(monkeypatch, tmp_path):
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_fals(monkeypatch)
+    _secretar_fals(monkeypatch)
+
+    evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
+
+    assert {"tip": "rezumat", "text": "Subiect: prețurile"} in evenimente
+
+
+def test_runda_din_care_n_a_iesit_nimic_nou_nu_anunta_niciun_rezumat(monkeypatch, tmp_path):
+    """Rezumatul se schimba la cateva runde, nu la fiecare: pagina afla doar cand chiar s-a schimbat."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_fals(monkeypatch)
+    _secretar_fals(monkeypatch, text=None)
+
+    evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
+
+    assert not [e for e in evenimente if e["tip"] == "rezumat"]
+
+
+def test_consiliul_care_a_tacut_nu_pune_nimic_in_memorie(monkeypatch, tmp_path):
+    """N-a vorbit nimeni, deci n-are ce se rezuma - si nici de ce sa se astepte dupa model."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _toti_tac(monkeypatch)
+    apeluri = _secretar_fals(monkeypatch)
+
+    _evenimente("Mulțumesc, notat.", conversatie)
+
+    assert apeluri == []
+
+
+def test_runda_taiata_de_mesajul_meu_nu_mai_reface_memoria(monkeypatch, tmp_path):
+    """Rezumatul cere un apel la model; o runda peste care am scris nu-l mai merita."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _mesaj_nou_peste_runda(monkeypatch, conversatie)
+    apeluri = _secretar_fals(monkeypatch)
+
+    _evenimente("Cum arătăm prețurile?", conversatie)
+
+    assert apeluri == []
+
+
+def test_personajul_isi_aduce_aminte_ce_a_iesit_din_fereastra(monkeypatch, tmp_path):
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    istoric.salveaza_rezumat(conversatie, "Decizii: preview pe server", 6)
+    _zaruri(monkeypatch)
+    cereri = _model_fals(monkeypatch)
+
+    _evenimente("Și prețurile?", conversatie)
+
+    assert all("Decizii: preview pe server" in cerere["sistem"] for cerere in cereri)
+
+
+def test_memoria_lunga_nu_ia_fata_chemarii_pe_nume(monkeypatch, tmp_path):
+    """Ordinea din prompt e tot ce sustine regula de la M10: ce e ultimul castiga.
+
+    Masurat pe gemma4:e2b, cu rezumatul mutat inaintea `INDEMN_OBLIGAT`: cel chemat pe nume pe
+    un subiect strain tace 1 data din 15, ca si fara memorie. Cu rezumatul pus in fata
+    contextului, adica dupa indemn in prompt-ul pe care il vede modelul, tace 14 din 15.
+    """
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    istoric.salveaza_rezumat(conversatie, "Decizii: preview pe server", 6)
+    _zaruri(monkeypatch)
+    cereri = _model_fals(monkeypatch)
+
+    _evenimente("@Maestra, ce zici?", conversatie)
+
+    chemata = next(c for c in cereri if c["nume"] == main.PERSONAJE["maestra"]["nume"])
+    assert chemata["sistem"].endswith(main.INDEMN_OBLIGAT)
+    assert "Decizii: preview pe server" in chemata["sistem"]
+
+
+def test_si_replica_de_la_sine_vine_cu_memoria_lunga(monkeypatch, tmp_path):
+    """Conversatia merge singura mai departe; n-are voie sa uite intre timp ce s-a decis."""
+    conversatie, runda, cereri = _o_runda_si_o_continuare(monkeypatch, tmp_path)
+    istoric.salveaza_rezumat(conversatie, "Decizii: preview pe server", 6)
+    cereri.clear()
+    _zaruri(monkeypatch, 0.0)
+
+    _continuare(conversatie, runda)
+
+    assert "Decizii: preview pe server" in cereri[0]["sistem"]
