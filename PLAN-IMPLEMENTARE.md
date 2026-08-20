@@ -481,6 +481,8 @@ Două schimbări, amândouă mici:
    cuvânt**, se mai încearcă o dată. Condiția contează — dacă ar cădea după ce a scris ceva, a
    doua încercare ar dubla textul în bulă, iar utilizatoarea a și citit prima jumătate. Costul,
    când Ollama chiar e oprit: două conexiuni refuzate în loc de una, adică milisecunde.
+   **Depășit de M18** în ce privește *care* erori se reîncearcă: reîncercarea pe orice excepție a
+   fost îngustată la erorile de încărcare, iar cu Ollama oprit nu mai există a doua conexiune.
 2. **Motivul ajunge în log.** Pe ecran rămâne bula roșie scurtă, dar în consola serverului se
    scrie excepția, ca și la `incalzeste_modelul` și `actualizeaza_rezumat`. Fără ea nu se poate
    distinge Ollama oprit de o încărcare picată pe GPU sau de un model nedescărcat.
@@ -488,6 +490,34 @@ Două schimbări, amândouă mici:
 Ce **nu** s-a schimbat: nu se reintroduce `num_gpu: 0`. Când modelul chiar se încarcă, merge pe
 GPU cu cifrele de la M0 — 1,59 GB VRAM, 84,5 tokeni/s. Workaround-ul ar aduce înapoi cele ~98s de
 încărcare pe CPU și crash-urile în rafală.
+
+## M18 — Se reîncearcă încărcarea picată, nu orice eroare
+
+M17 a pus reîncercarea, dar pe *orice* excepție și fără pauză. Amândouă s-au dovedit greșite când
+eșecul a mai apărut o dată: **o dată în 216 teste**, la prima cerere de după `ollama stop`, cu
+aceeași semnătură ca la M17 — `exit status 0xc0000409`, „CUDA error: shared object initialization
+failed" — pe Ollama 0.32.14 și RTX 4050 Laptop 6 GB. Forțat, nu s-a mai reprodus în 5 încercări.
+
+Trei schimbări în `backend/ai_client.py`:
+
+1. **Se distinge eșecul de încărcare de orice altă eroare.** `e_esec_de_incarcare` caută urmele
+   din `URME_INCARCARE_ESUATA` în textul excepției — biblioteca `ollama` le trece pe toate prin
+   același `ResponseError`, deci tipul nu le deosebește. Ollama oprit, model nedescărcat sau
+   conexiune picată la mijloc **nu** se mai reîncearcă: acolo a doua încercare pierde secunde și
+   eșuează la fel. Cu Ollama oprit vreau bula roșie imediat.
+2. **Se așteaptă `PAUZA_REINCERCARE` (3s) înainte de a doua încercare**, ca procesul crăpat să fie
+   îngropat și contextul CUDA eliberat. Cifra nu e măsurată — eșecul nu se poate reproduce forțat
+   — și comentariul spune asta; e aleasă să fie mică pe lângă cele 12–16s ale unei încărcări la
+   rece. Așteptarea se injectează (`ai_client.pauza`), ca `main.zaruri`: un test care doarme trei
+   secunde e un test stricat.
+3. **`preincarca` primește aceeași reîncercare.** Ea *e* încărcarea la rece, deci exact momentul
+   în care se vede eșecul; până acum era acoperită doar prima cerere a unei runde.
+
+O singură reîncercare, nu o buclă. Dacă și a doua încercare pică, eroarea actuală iese afară.
+
+Testele deterministe (`backend/tests/test_ai_client.py`): un fals care crapă o dată și apoi
+reușește, unul care crapă mereu, unul cu Ollama oprit (eroare imediată, un singur apel, nicio
+pauză) și perechea lor pe `preincarca`.
 
 ## Definiția de „gata"
 

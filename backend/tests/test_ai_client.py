@@ -262,14 +262,47 @@ def _ollama_care_crapa(monkeypatch, *rezultate):
     return apeluri
 
 
-def test_modelul_care_crapa_la_incarcare_e_reincercat_o_data(monkeypatch):
+def _pauze(monkeypatch) -> list[float]:
+    """Asteptarea dintre incercari se injecteaza, ca un test sa n-o astepte pe bune."""
+    asteptate = []
+    monkeypatch.setattr(ai_client, "pauza", asteptate.append)
+    return asteptate
+
+
+def _esec_de_incarcare(mesaj: str = "") -> Exception:
+    """Eroarea exacta din `%LOCALAPPDATA%\\Ollama\\server.log` cand llama-server crapa la pornire."""
+    return RuntimeError(
+        mesaj
+        or "llama runner process has terminated: exit status 0xc0000409; "
+        "CUDA error: shared object initialization failed"
+    )
+
+
+def test_incarcarea_picata_se_mai_incearca_o_data(monkeypatch):
     """Pe masina asta, incarcarea la rece pe GPU esueaza din cand in cand cu 0xc0000409, iar
     incercarea urmatoare merge. Fara reincercare, prima intrebare de dupa o pauza da bula rosie."""
     apeluri = _ollama_care_crapa(
         monkeypatch,
-        RuntimeError("CUDA error: shared object initialization failed"),
+        _esec_de_incarcare(),
         _stream_fals("Contează codul ", "exact al mărgelei."),
     )
+    asteptate = _pauze(monkeypatch)
+
+    text = "".join(trimite_mesaj_stream("Ce zici?", "Maestra"))
+
+    assert text == "Contează codul exact al mărgelei."
+    assert len(apeluri) == 2
+    assert asteptate and all(secunde >= 2 for secunde in asteptate)
+
+
+def test_eroarea_de_pe_gpu_se_cunoaste_dupa_codul_de_iesire(monkeypatch):
+    """Log-ul nu spune de fiecare data „CUDA error"; codul crash-ului e destul ca sa reincerce."""
+    apeluri = _ollama_care_crapa(
+        monkeypatch,
+        _esec_de_incarcare("llama-server terminated  exit status 0xc0000409"),
+        _stream_fals("Contează codul exact al mărgelei."),
+    )
+    _pauze(monkeypatch)
 
     text = "".join(trimite_mesaj_stream("Ce zici?", "Maestra"))
 
@@ -277,14 +310,32 @@ def test_modelul_care_crapa_la_incarcare_e_reincercat_o_data(monkeypatch):
     assert len(apeluri) == 2
 
 
+def test_cu_ollama_oprit_eroarea_vine_imediat(monkeypatch):
+    """Nu orice eroare e o incarcare picata: daca Ollama chiar e oprit, vreau bula rosie acum,
+    nu peste cateva secunde de asteptare degeaba."""
+    apeluri = _ollama_care_crapa(
+        monkeypatch,
+        ConnectionError("Failed to establish a new connection: [WinError 10061]"),
+        _stream_fals("nu se ajunge aici"),
+    )
+    asteptate = _pauze(monkeypatch)
+
+    with pytest.raises(ConnectionError):
+        list(trimite_mesaj_stream("Ce zici?", "Maestra"))
+
+    assert len(apeluri) == 1
+    assert asteptate == []
+
+
 def test_reincercarea_nu_repeta_ce_a_ajuns_deja_pe_ecran(monkeypatch):
     """Daca modelul cade dupa ce a scris ceva, a doua incercare ar dubla textul in bula."""
 
     def stream_care_cade():
         yield {"message": {"content": "Contează codul "}}
-        raise RuntimeError("conexiunea a picat la mijloc")
+        raise _esec_de_incarcare()
 
     _ollama_care_crapa(monkeypatch, stream_care_cade(), _stream_fals("altceva"))
+    _pauze(monkeypatch)
 
     bucati = []
     with pytest.raises(RuntimeError):
@@ -296,11 +347,40 @@ def test_reincercarea_nu_repeta_ce_a_ajuns_deja_pe_ecran(monkeypatch):
 
 def test_daca_si_a_doua_incercare_crapa_eroarea_iese_afara(monkeypatch):
     """Runda trebuie sa afle: o bula rosie e mai bine decat o asteptare fara capat."""
-    _ollama_care_crapa(
+    apeluri = _ollama_care_crapa(
         monkeypatch,
-        RuntimeError("Ollama oprit"),
-        RuntimeError("Ollama tot oprit"),
+        _esec_de_incarcare(),
+        _esec_de_incarcare(),
     )
+    _pauze(monkeypatch)
 
     with pytest.raises(RuntimeError):
         list(trimite_mesaj_stream("Ce zici?", "Maestra"))
+
+    assert len(apeluri) == 2
+
+
+def test_preincarcarea_mai_incearca_o_data_daca_modelul_nu_porneste(monkeypatch):
+    """Preincarcarea loveste tocmai incarcarea la rece, adica exact momentul care pica."""
+    apeluri = _ollama_care_crapa(monkeypatch, _esec_de_incarcare(), {"message": {"content": "ok"}})
+    asteptate = _pauze(monkeypatch)
+
+    preincarca()
+
+    assert len(apeluri) == 2
+    assert asteptate and all(secunde >= 2 for secunde in asteptate)
+
+
+def test_preincarcarea_cu_ollama_oprit_nu_mai_incearca(monkeypatch):
+    apeluri = _ollama_care_crapa(
+        monkeypatch,
+        ConnectionError("Failed to establish a new connection: [WinError 10061]"),
+        {"message": {"content": "ok"}},
+    )
+    asteptate = _pauze(monkeypatch)
+
+    with pytest.raises(ConnectionError):
+        preincarca()
+
+    assert len(apeluri) == 1
+    assert asteptate == []

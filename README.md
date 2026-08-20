@@ -23,8 +23,12 @@ răspuns să nu aștepte cele câteva secunde de încărcare.
 
 Dacă un personaj răspunde cu bula roșie „modelul nu a răspuns", motivul e scris în consola
 serverului. Cel mai des e încărcarea la rece pe GPU, care pică din când în când pe mașina asta
-(`0xc0000409` / „CUDA error"); e reîncercată automat o dată, iar dacă și a doua oară pică, merită
-verificat `%LOCALAPPDATA%\Ollama\server.log`.
+(`0xc0000409` / „CUDA error"); e reîncercată automat o dată, după `PAUZA_REINCERCARE` secunde
+(`backend/ai_client.py`), atât la preîncărcare cât și la prima cerere a unei runde. Dacă și a doua
+oară pică, merită verificat `%LOCALAPPDATA%\Ollama\server.log`.
+
+Se reîncearcă doar erorile de încărcare, recunoscute după urmele din `URME_INCARCARE_ESUATA`. Cu
+Ollama oprit sau cu modelul nedescărcat, eroarea vine imediat — a doua încercare ar eșua la fel.
 
 Teste:
 

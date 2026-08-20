@@ -1,4 +1,5 @@
 import re
+import time
 from typing import Iterator
 
 import ollama
@@ -161,8 +162,9 @@ def _construieste_cerere(
     #
     # Recontrolat pe 20 august 2026: nu e rezolvat, e doar rar. Din patru incarcari la rece intr-o
     # zi, una a picat cu exact aceeasi eroare (14:15:57 in %LOCALAPPDATA%\Ollama\server.log), iar
-    # incercarea urmatoare a mers. De-asta exista `_bucati_cu_reincercare`, nu pentru ca ar fi
-    # nevoie de num_gpu inapoi: cand modelul chiar se incarca, merge pe GPU cum scrie mai sus.
+    # incercarea urmatoare a mers; in aceeasi zi, o data in 216 teste. De-asta exista
+    # `_reincearca_dupa`, nu pentru ca ar fi nevoie de num_gpu inapoi: cand modelul chiar se
+    # incarca, merge pe GPU cum scrie mai sus.
     #
     # Sa nu se reintroduca workaround-ul: pe CPU acelasi model cerea 5.57 GB in RAM de sistem
     # (din 15.19 GB totali) si se incarca in ~98s, iar cand RAM-ul era ocupat de alte aplicatii
@@ -175,15 +177,77 @@ def _construieste_cerere(
     return {"messages": mesaje, "options": optiuni, "keep_alive": KEEP_ALIVE, "think": GANDIRE}
 
 
+# Dupa ce urmele astea apar in eroare, modelul n-a apucat sa porneasca: llama-server a crapat la
+# incarcare, deci a doua incercare are ce sa repare. Se cauta in text pentru ca biblioteca `ollama`
+# le trece pe toate prin acelasi `ResponseError` - tipul exceptiei nu le deosebeste.
+#
+# Lista e scurta intentionat. Ce nu e aici - Ollama oprit ("connection refused", WinError 10061),
+# model nedescarcat ("model not found"), conexiune picata la mijloc - nu se reincearca: acolo a
+# doua incercare pierde cateva secunde si esueaza la fel.
+URME_INCARCARE_ESUATA = (
+    "0xc0000409",
+    "cuda error",
+    "llama runner process has terminated",
+)
+
+# Cat se asteapta inainte de a doua incercare. Nu e o cifra masurata - esecul nu s-a putut
+# reproduce fortat, deci n-are cum sa fie - ci una aleasa sa fie mica pe langa ce salveaza:
+# incarcarea la rece dureaza oricum 12-16s, asa ca pauza asta adauga sub un sfert din ea. Rostul
+# ei e sa lase procesul crapat sa fie ingropat si contextul CUDA eliberat inainte sa ceara altul.
+PAUZA_REINCERCARE = 3
+
+# Injectata, ca in `main.zaruri`: un test care asteapta pe bune trei secunde e un test stricat.
+pauza = time.sleep
+
+
+def e_esec_de_incarcare(eroare: Exception) -> bool:
+    text = str(eroare).lower()
+    return any(urma in text for urma in URME_INCARCARE_ESUATA)
+
+
+def _reincearca_dupa(eroare: Exception) -> None:
+    """Lasa a doua incercare sa aiba loc, dar numai pentru o incarcare picata pe GPU.
+
+    Incarcarea la rece a lui gemma4:e2b esueaza rar si nereproductibil, iar incercarea urmatoare
+    merge. Masurat in `%LOCALAPPDATA%\\Ollama\\server.log`, pe Ollama 0.32.14 cu RTX 4050 Laptop
+    6 GB: pe 20 august 2026, din patru incarcari la rece una a picat cu `llama-server terminated,
+    exit status 0xc0000409` si „CUDA error: shared object initialization failed" (14:15:57), iar
+    urmatoarea a mers; in aceeasi zi, o data in 216 teste, tot la prima cerere de dupa `ollama
+    stop`. Fortat, n-a mai iesit in 5 incercari - de-asta se traieste cu o reincercare, nu cu un
+    workaround.
+
+    E aceeasi familie de esecuri pentru care exista `num_gpu: 0`, despre care se credea ca e
+    rezolvata in 0.32.14 (vezi comentariul din `_construieste_cerere`). Nu e rezolvata, e rara;
+    dar cand modelul chiar se incarca, merge pe GPU cu cifrele de acolo, deci workaround-ul tot
+    nu se reintroduce.
+
+    Se incearca o singura data si numai pe erorile astea: daca Ollama e oprit, eroarea trebuie sa
+    ajunga imediat la utilizatoare, nu dupa o pauza si o a doua conexiune refuzata.
+    """
+    if not e_esec_de_incarcare(eroare):
+        raise eroare
+    print(f"[avertisment] modelul n-a pornit, se mai incearca o data peste {PAUZA_REINCERCARE}s: {eroare}")
+    pauza(PAUZA_REINCERCARE)
+
+
 def preincarca(model: str = MODEL_IMPLICIT) -> None:
     """Aduce modelul in memorie inainte de primul mesaj, ca sa nu astepte utilizatoarea incarcarea."""
-    ollama.chat(
-        model=model,
-        messages=[{"role": "user", "content": "ok"}],
-        options={"num_predict": 1},
-        keep_alive=KEEP_ALIVE,
-        think=GANDIRE,
-    )
+
+    def incearca() -> None:
+        ollama.chat(
+            model=model,
+            messages=[{"role": "user", "content": "ok"}],
+            options={"num_predict": 1},
+            keep_alive=KEEP_ALIVE,
+            think=GANDIRE,
+        )
+
+    # Preincarcarea e chiar incarcarea la rece, deci exact momentul in care se vede esecul.
+    try:
+        incearca()
+    except Exception as eroare:
+        _reincearca_dupa(eroare)
+        incearca()
 
 
 def trimite_mesaj(
@@ -207,13 +271,9 @@ def trimite_mesaj(
 def _bucati_cu_reincercare(model: str, cerere: dict) -> Iterator[str]:
     """Bucatile raspunsului, cu inca o incercare daca modelul crapa inainte de primul cuvant.
 
-    Incarcarea la rece a lui gemma4:e2b pe GPU esueaza din cand in cand, iar urmatoarea
-    incercare merge. Masurat pe 20 august 2026, in `%LOCALAPPDATA%\\Ollama\\server.log`: patru
-    incarcari la rece, una picata cu `llama-server terminated, exit status 0xc0000409` si
-    „CUDA error: shared object initialization failed" - aceeasi eroare pentru care exista
-    workaround-ul `num_gpu: 0`, despre care se credea (si scrie mai jos) ca e rezolvata in
-    Ollama 0.32.14. E doar mult mai rara, nu disparuta. Fara reincercare, prima intrebare de
-    dupa o pauza mai lunga se alege din cand in cand cu o bula rosie.
+    Prima cerere a unei runde poate cadea peste incarcarea la rece care esueaza rar - vezi
+    `_reincearca_dupa`, care decide si ce erori merita reincercate. Fara asta, prima intrebare
+    de dupa o pauza mai lunga se alege din cand in cand cu o bula rosie.
 
     Se reincearca numai cat timp n-a iesit nimic: daca modelul cade dupa ce a scris ceva, a
     doua incercare ar dubla textul in bula, iar utilizatoarea a si citit prima jumatate.
@@ -228,7 +288,7 @@ def _bucati_cu_reincercare(model: str, cerere: dict) -> Iterator[str]:
         except Exception as eroare:
             if ultima_incercare or a_pornit:
                 raise
-            print(f"[avertisment] modelul n-a pornit, se mai incearca o data: {eroare}")
+            _reincearca_dupa(eroare)
 
 
 def trimite_mesaj_stream(
