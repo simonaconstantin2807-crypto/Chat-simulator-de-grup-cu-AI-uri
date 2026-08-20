@@ -6,20 +6,26 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
 import istoric
 import rezumat
-from ai_client import fara_pas, preincarca, trimite_mesaj, trimite_mesaj_stream
+from ai_client import (
+    fara_pas,
+    fara_replici_degenerate,
+    preincarca,
+    trimite_mesaj,
+    trimite_mesaj_stream,
+)
 from personaje import (
     alege_vorbitorul,
     chemati_fara_raspuns,
     gaseste_mentiuni,
     incarca_personaje,
     obligati_sa_raspunda,
-    ordinea_vorbitorilor,
     profil_public,
+    vorbitorii_rundei,
 )
 
 # Se adauga la system prompt-ul celor care nu pot sa taca: cei chemati pe nume si cei carora
@@ -43,6 +49,14 @@ PAUZA_SECUNDE = (5, 20)
 # sa scrie PAS, iar atunci replica nu se pierde: se incearca altcineva. Fara plafon, o discutie
 # stinsa ar cere un apel la model pentru fiecare personaj, la fiecare replica.
 INCERCARI_PE_REPLICA = 3
+
+# Cat de lung poate fi un mesaj de-al meu. Nu e o precautie: peste vreo 20.000 de litere,
+# Ollama scoate system prompt-ul din fereastra ca sa faca loc mesajului, iar ce raspunde nu
+# mai e personajul, ci un asistent generic care nici nu stie de PAS (masurat pe gemma4:e2b,
+# 20 august 2026, la 20.000 si la 100.000 de litere). 2000 e un paragraf lung de intrebare,
+# mult peste orice s-a scris pana acum in consiliu. Aceeasi valoare e si `maxlength`-ul
+# casetei din `static/index.html`, ca refuzul sa nu se vada niciodata din pagina.
+LITERE_IN_MESAJ = 2000
 
 # Tipurile de eveniment cu care se poate incheia o replica. Orice altceva inseamna ca runda s-a
 # oprit la mijloc si nu mai are cine sa asculte urmarea.
@@ -93,12 +107,15 @@ def cate_replici_autonome(sansa=random.random) -> int:
 
 
 def salveaza_replica(numar: int, id_conversatie: str, mesaj: dict) -> bool:
-    """Replica intra in istoric doar daca runda ei mai e cea curenta."""
+    """Replica intra in istoric doar daca runda ei mai e cea curenta si conversatia mai exista.
+
+    A doua conditie e pentru conversatia stearsa cat vorbea consiliul: replicile ramase n-au
+    unde se duce si nu trebuie sa refaca fisierul tocmai aruncat.
+    """
     with _lacat_runde:
         if runda_anulata(numar):
             return False
-        istoric.salveaza_mesaj(id_conversatie, mesaj)
-        return True
+        return istoric.salveaza_mesaj(id_conversatie, mesaj)
 
 
 async def trebuie_oprita(numar: int, cerere: Request) -> bool:
@@ -143,7 +160,7 @@ UTILIZATOR = {
 
 
 class MesajIntrare(BaseModel):
-    text: str
+    text: str = Field(max_length=LITERE_IN_MESAJ)
 
 
 class TitluIntrare(BaseModel):
@@ -187,7 +204,12 @@ def pagina_chat():
 
 @app.get("/api/health")
 def health():
-    raspuns = trimite_mesaj("Raspunde cu un singur cuvant: OK.")
+    """„E viu?" trebuie sa raspunda si cand modelul nu e: cu Ollama oprit, o eroare de server
+    n-ar spune daca a picat serverul sau doar modelul din spatele lui."""
+    try:
+        raspuns = trimite_mesaj("Raspunde cu un singur cuvant: OK.")
+    except Exception as eroare:
+        return {"status": "ok", "model_raspunde": False, "detaliu": str(eroare)}
     return {"status": "ok", "model_raspunde": bool(raspuns.strip())}
 
 
@@ -243,6 +265,18 @@ def memoria(id_conversatie: str):
     }
 
 
+def _context_dinaintea_mesajului_meu(context: list[dict], mesajul_meu: str) -> list[dict]:
+    """Contextul taiat inainte de mesajul meu, cu tot ce a venit dupa el scos.
+
+    Serveste doar celei de-a doua incercari: replicile de dupa mesajul meu sunt exact cele care
+    l-au incurcat pe cel obligat. Daca mesajul meu nu mai e in fereastra, nu se taie nimic.
+    """
+    for pozitie in range(len(context) - 1, -1, -1):
+        if context[pozitie]["content"] == mesajul_meu:
+            return context[:pozitie]
+    return context
+
+
 async def replica_personajului(
     id_conversatie: str,
     personaj: dict,
@@ -250,46 +284,65 @@ async def replica_personajului(
     cerere: Request,
     sistem: str,
     intrebare_implicita: str,
+    obligat: bool = False,
 ):
     """Evenimentele unei singure replici, in ordinea in care ajung pe ecran.
 
     Ultimul spune cum s-a incheiat: `gata`, `tace` sau `eroare`. Daca runda s-a oprit la
     mijloc, generatorul se termina fara niciunul dintre ele - de-asta se yield-eaza dictionare,
     nu linii gata scrise: cine cheama vede si el ce s-a intamplat, fara sa desfaca JSON-ul.
-    """
-    # Contextul se citeste abia acum, nu la inceputul rundei: asa fiecare aude ce s-a zis
-    # inaintea lui. Ultimul mesaj din el e replica la care raspunde, deci iese din context si
-    # intra ca intrebare curenta.
-    context = istoric.context_pentru(id_conversatie, personaj["id"])
-    intrebare = context.pop()["content"] if context else intrebare_implicita
 
+    Cine e `obligat` are doua incercari, nu una. Prima merge dupa regula obisnuita, la ultima
+    replica din chat; daca aceea era o intrebare si a iesit un raspuns de un cuvant, filtrele
+    il inghit, iar cel convocat pe nume ar disparea cu totul - adica exact runda goala pe care
+    a reparat-o M9. A doua incercare il intreaba mesajul meu, cel care l-a si convocat, cu
+    replicile de dupa el scoase din context. Dupa ea nu se mai insista: tacerea se anunta.
+    """
     yield {"tip": "personaj", **profil_public(personaj)}
 
-    text_complet = ""
-    try:
-        bucati = trimite_mesaj_stream(
-            intrebare,
-            personaj["nume"],
-            sistem=sistem,
-            temperatura=personaj["temperaturaRecomandata"],
-            context=context,
-        )
-        # Asteptarea dupa model se muta pe alt fir: bucla de evenimente ramane libera sa
-        # primeasca mesajul meu urmator, altfel "am prioritate" ar fi doar o vorba.
-        # `fara_pas` inghite raspunsul celui care n-are nimic de adaugat, deci un text gol
-        # aici inseamna "a ales sa taca", nu "a raspuns cu nimic".
-        async for bucata in iterate_in_threadpool(fara_pas(bucati)):
-            if await trebuie_oprita(numar, cerere):
-                return
-            text_complet += bucata
-            yield {"tip": "text", "text": bucata}
-    except Exception:
-        yield {"tip": "eroare", "text": "modelul nu a raspuns"}
-        return
+    incercari = (False, True) if obligat else (False,)
+    for a_doua in incercari:
+        # Contextul se citeste abia acum, nu la inceputul rundei: asa fiecare aude ce s-a zis
+        # inaintea lui. Ultimul mesaj din el e replica la care raspunde, deci iese din context
+        # si intra ca intrebare curenta.
+        context = istoric.context_pentru(id_conversatie, personaj["id"])
+        if a_doua:
+            context = _context_dinaintea_mesajului_meu(context, intrebare_implicita)
+            intrebare = intrebare_implicita
+        else:
+            intrebare = context.pop()["content"] if context else intrebare_implicita
 
-    if not text_complet.strip():
-        yield {"tip": "tace"}
-        return
+        text_complet = ""
+        try:
+            bucati = trimite_mesaj_stream(
+                intrebare,
+                personaj["nume"],
+                sistem=sistem,
+                temperatura=personaj["temperaturaRecomandata"],
+                context=context,
+            )
+            # Asteptarea dupa model se muta pe alt fir: bucla de evenimente ramane libera sa
+            # primeasca mesajul meu urmator, altfel "am prioritate" ar fi doar o vorba.
+            # Cele doua filtre inghit si abtinerea, si replica degenerata, amandoua in stream,
+            # deci un text gol aici inseamna "n-a avut ce spune", nu "a raspuns cu nimic".
+            async for bucata in iterate_in_threadpool(fara_replici_degenerate(fara_pas(bucati))):
+                if await trebuie_oprita(numar, cerere):
+                    return
+                text_complet += bucata
+                yield {"tip": "text", "text": bucata}
+        except Exception as eroare:
+            # Pe ecran ajunge o bula rosie scurta, dar motivul trebuie sa ramana undeva: fara
+            # el, „modelul nu a raspuns" nu spune daca a picat Ollama, daca a crapat incarcarea
+            # pe GPU sau daca modelul nu e descarcat.
+            print(f"[avertisment] {personaj['nume']} n-a primit raspuns de la model: {eroare}")
+            yield {"tip": "eroare", "text": "modelul nu a raspuns"}
+            return
+
+        if text_complet.strip():
+            break
+        if a_doua or not obligat:
+            yield {"tip": "tace"}
+            return
 
     # Daca intre timp am scris peste runda, replica nu se salveaza: pagina a sters deja bula pe
     # jumatate scrisa, iar ce nu se vede n-are voie sa reapara la refresh.
@@ -302,8 +355,11 @@ async def replica_personajului(
 @app.post("/api/conversatii/{id_conversatie}/mesaje")
 async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
     _conversatie_sau_404(id_conversatie)
-    coada = ordinea_vorbitorilor(mesaj.text, PERSONAJE)
-    obligati = set(obligati_sa_raspunda(mesaj.text, PERSONAJE, sansa=zaruri))
+    # Nu mai e intrebat tot consiliul: se aleg cei care iau cuvantul, iar PAS ramane doar
+    # pentru cine e ales fara sa fie si obligat (M15).
+    vorbitori = vorbitorii_rundei(mesaj.text, PERSONAJE, sansa=zaruri)
+    coada = list(vorbitori)
+    obligati = set(obligati_sa_raspunda(mesaj.text, vorbitori, PERSONAJE, sansa=zaruri))
     numar = incepe_runda(id_conversatie, {**UTILIZATOR, "eu": True, "text": mesaj.text})
     # O data pe runda, nu la fiecare personaj: memoria se reface abia la capatul ei.
     memoria_in_prompt = rezumat.bloc_pentru_prompt(id_conversatie)
@@ -331,7 +387,7 @@ async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
             text_complet = ""
             sfarsit = None
             async for eveniment in replica_personajului(
-                id_conversatie, personaj, numar, cerere, sistem, mesaj.text
+                id_conversatie, personaj, numar, cerere, sistem, mesaj.text, id_personaj in obligati
             ):
                 if eveniment["tip"] == "text":
                     text_complet += eveniment["text"]
@@ -355,7 +411,7 @@ async def trimite(id_conversatie: str, mesaj: MesajIntrare, cerere: Request):
                 coada.insert(pas, chemat)
                 obligati.add(chemat)
 
-        # Sortii obliga un vorbitor cand nu e nicio mentiune (M9), dar pe un mesaj fara continut
+        # Sortii obliga un vorbitor dintre cei alesi cand nu e nicio mentiune (M9), dar pe un mesaj fara continut
         # („Multumesc, notat.") si cel obligat tace uneori - masurat 15 din 25 pe gemma4:e2b, cu
         # sase formulari de INDEMN_OBLIGAT incercate. Atunci ecranul ar ramane neschimbat si nu
         # s-ar distinge de un server picat, asa ca runda goala se anunta.

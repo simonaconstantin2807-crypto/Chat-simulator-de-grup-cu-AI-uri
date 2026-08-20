@@ -2,7 +2,7 @@
 
 Consiliul CoSiMa: chat de grup cu 5 personaje AI, backend FastAPI + Ollama local, frontend
 o singură pagină statică. Viziunea e în `SPEC.md`, etapele în `PLAN-IMPLEMENTARE.md`, modul
-de folosire în `README.md`.
+de folosire în `README.md`, scenariul de prezentare în `DEMO.md`.
 
 Regulile de mai jos nu sunt preferințe noi — sunt ce se respectă deja în cod. Se citesc
 înainte de prima modificare.
@@ -166,7 +166,8 @@ O propunere care cere una dintre astea se discută întâi, nu se începe.
 
 - `PAS` nu ajunge niciodată pe ecran și nu se salvează în istoric. Se filtrează în **stream**
   (`fara_pas`), nu după ce s-a strâns răspunsul întreg — altfel apare și dispare sub ochii
-  utilizatoarei. La fel prefixul `Maestra:` (`_curata_stream`).
+  utilizatoarei. La fel prefixul `Maestra:` (`_curata_stream`) și replica degenerată
+  (`fara_replici_degenerate`), care se tratează tot ca tăcere.
 - Contextul se citește **la rândul fiecăruia**, nu la începutul rundei. Fără asta, al doilea
   vorbitor nu-l aude pe primul și se pierde punctul 4 din definiția de „gata".
 - În context, replicile altora poartă numele vorbitorului în față; replicile proprii rămân
@@ -176,5 +177,11 @@ O propunere care cere una dintre astea se discută întâi, nu se începe.
   sursa de conținut pentru system prompt-uri, nu formatul de rulare.
 - Zarurile se aruncă **înainte** de a întreba personajul, ca să nu ajungem să cerem o replică
   de la cineva care tocmai a spus că n-are nimic de adăugat.
+- System prompt-urile se schimbă **cu măsurătoarea în mână**, nu din intuiție. Pe un model de 2B,
+  o schimbare care pare cosmetică mută comportamentul cu totul: la M14, trecerea a două reguli
+  din „NU faci X" în „faci Y" a dus-o pe Clienta de la 0 la 10 tăceri din 15 atunci când era
+  chemată pe nume. Orice atingere de prompt se verifică pe cele cinci cazuri din
+  `backend/tests/test_tacerea.py` — chemat, chemat cu memorie, domeniul propriu, domeniul propriu
+  cu memorie, subiect străin — nu doar pe cel pe care se lucrează.
 - O eroare a unui personaj nu oprește runda: se trimite `{"tip":"eroare"}` și se merge mai
   departe.

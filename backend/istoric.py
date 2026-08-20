@@ -13,7 +13,7 @@ pot desincroniza - la cateva zeci de sedinte, citirea folderului nu se simte.
 import json
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -47,6 +47,11 @@ TIPAR_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 # Endpoint-urile FastAPI sincrone ruleaza pe fire diferite, iar salvarea e citeste-si-rescrie.
 _lacat = threading.Lock()
 
+# Ultimul moment dat de `_acum`, si lacatul lui. Separat de `_lacat`, pentru ca `_acum` se
+# cheama si din interiorul lui.
+_ultimul_acum = ""
+_lacat_ceas = threading.Lock()
+
 
 def _dir_conversatii() -> Path:
     return DATE_DIR / "conversatii"
@@ -59,9 +64,21 @@ def _cale(id_conversatie: str) -> Path | None:
 
 
 def _acum() -> str:
-    """Momentul, pana la microsecunda: pe secunda intreaga, doua conversatii atinse in aceeasi
-    secunda ies la egalitate si lista nu mai stie care e cea folosita ultima."""
-    return datetime.now().isoformat()
+    """Momentul, strict crescator, ca lista sa stie mereu care conversatie e cea folosita ultima.
+
+    Nu e de ajuns ca `datetime.now()` are microsecunde in format: pe Windows ceasul chiar sta pe
+    loc ~15ms, deci sase apeluri unul dupa altul dau aceeasi valoare (masurat pe 20 august 2026).
+    La egalitate, `listeaza_conversatii` cadea pe sufixul aleator din id si conversatia tocmai
+    facuta putea ajunge sub una veche. Cand ceasul se repeta, se adauga o microsecunda: ora
+    ramane corecta la rezolutia pe care ceasul o are cu adevarat.
+    """
+    global _ultimul_acum
+    with _lacat_ceas:
+        acum = datetime.now().isoformat()
+        if acum <= _ultimul_acum:
+            acum = (datetime.fromisoformat(_ultimul_acum) + timedelta(microseconds=1)).isoformat()
+        _ultimul_acum = acum
+        return acum
 
 
 def _scrie(conversatie: dict) -> None:
@@ -151,11 +168,16 @@ def incarca_istoric(id_conversatie: str) -> list[dict]:
     return conversatie["mesaje"] if conversatie else []
 
 
-def salveaza_mesaj(id_conversatie: str, mesaj: dict) -> None:
+def salveaza_mesaj(id_conversatie: str, mesaj: dict) -> bool:
+    """`False` daca n-a avut unde intra: conversatia a fost stearsa intre timp.
+
+    Nu se recreeaza fisierul. O conversatie pe care tocmai am aruncat-o n-are voie sa reapara
+    in lista pentru ca o replica pornita inainte a apucat sa se termine.
+    """
     with _lacat:
         conversatie = citeste_conversatie(id_conversatie)
         if not conversatie:
-            return
+            return False
 
         conversatie["mesaje"].append(mesaj)
         conversatie["actualizatLa"] = _acum()
@@ -166,6 +188,7 @@ def salveaza_mesaj(id_conversatie: str, mesaj: dict) -> None:
             conversatie["titlu"] = titlu_din_mesaj(mesaj.get("text", ""))
 
         _scrie(conversatie)
+        return True
 
 
 def rezumatul(id_conversatie: str) -> tuple[str, int]:

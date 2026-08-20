@@ -94,6 +94,10 @@ aceeași rundă, la replica ce l-a chemat. Un singur val de lanț, nimeni de dou
 Aruncarea cu banul e injectată (`obligati_sa_raspunda(..., sansa=)` și `main.zaruri`), ca
 testele să fie deterministe.
 
+**Depășit de M15** la partea de „cine e întrebat": nemenționații nu mai primesc fiecare câte o
+aruncare, ci intră cel mult unul, tras la sorți dintr-o singură aruncare. Convocarea prin `@` și
+lanțul de mențiuni rămân exact cum sunt descrise aici.
+
 ## M8 — Chat natural: memorie comună și dreptul de a tăcea
 
 Personajele se aud între ele: `context_pentru` nu mai filtrează nimic, iar replicile altora
@@ -109,6 +113,9 @@ voie să tacă — primesc `INDEMN_OBLIGAT` în plus la system prompt.
 
 Costul, asumat: un mesaj cu o singură mențiune înseamnă acum un apel la model pentru fiecare
 personaj, nu unul singur. Tăcerea nu se poate afla fără să întrebi.
+
+**Depășit de M15**, și tocmai pe costul ăsta: nu se mai întreabă toți, se aleg vorbitorii. `PAS`
+rămâne, dar ca plasă de siguranță pentru întrebarea îngustă — motivul e măsurat, e acolo.
 
 ## M9 — Am prioritate față de consiliu
 
@@ -279,6 +286,209 @@ mea întrebare, iar la buget de tokeni epuizat ultimul rând poate ieși tăiat 
 la rescrierea următoare. Subiectul și deciziile — partea pentru care există rezumatul — ies
 corect.
 
+## M14 — Polish și pregătire pentru prezentare
+
+Ultima etapă. Nimic nou ca funcționalitate: voci mai distincte, regula de tăcere verificată pe
+model, marginile care se rup, și un scenariu de demo repetat cu cronometrul.
+
+**Vocile.** Toate cele cinci aveau aceeași regulă de lungime — „1-3 propoziții scurte". Într-un
+grup real unul scrie trei cuvinte și altul un paragraf, așa că regula a devenit una per personaj,
+scrisă pozitiv (ce face personajul, nu ce să nu facă). Măsurat pe `gemma4:e2b`, mediana replicii
+de pe domeniul propriu: Operatoarea **5** cuvinte, Clienta **6**, Antreprenoarea **32**,
+Programatorul **39**, Maestra **51**. Fiecare fișier `personaj-*.md` are acum un „Nivel de
+energie" cu cifra lui.
+
+**Regula de tăcere, verificată pe bune.** M10 o măsurase pe o singură întrebare străină și
+raportase 25/25. La M14 s-a măsurat pe **10 întrebări strict tehnice diferite**, și acolo se
+vedea altceva: Clienta tăcea **2 din 10**, Operatoarea 1, Antreprenoarea 2, Maestra 4. Eticheta
+scurtă de la M10 („Domeniul tău: <rol>.") e prea vagă când întrebarea nu seamănă cu întrebarea
+de test.
+
+Înlocuită cu subiectele numite concret („Vorbești despre: cum arată bijuteria, cât de repede și
+de simplu se comandă…"). După, pe 20 de întrebări: Clienta **7/20**, Operatoarea 9/20,
+Antreprenoarea 10/20, Maestra 15/20, Programatorul 2/20 — și el corect, subiectul chiar e al lui.
+Pe domeniul propriu nimeni n-a tăcut mai mult de 2 din 12, deci regula n-a devenit mutism.
+
+Din listă a ieșit „coduri DB" la Operatoarea: cuvântul „cod" o chema la orice întrebare de
+programare (1/10 tăceri cu el, 8/10 fără). La Antreprenoarea a intrat „nume și domeniu", fără
+care tăcea tocmai la întrebarea din §16.4, care e a ei.
+
+**Ce n-a mers, și de ce contează.** Odată cu vocile, blocul de reguli fusese trecut tot în limbaj
+pozitiv, inclusiv cele două reguli care începeau cu „NU". Rezultat măsurat, pe Clienta, 15 rulări:
+chemată pe nume pe subiect străin, cu memorie lungă în prompt, tăcea **10 din 15** — adică
+`@mențiunea` nu mai era o convocare. Și pe domeniul ei, nechemată, tăcea **14 din 15**. Izolarea
+pe jumătăți de prompt (corp × coadă, 4 combinații) a arătat că vinovat e corpul, nu criteriul de
+domeniu; cele două reguli au fost puse la loc în forma lor măsurată. După revenire, toate cele
+cinci garanții sunt identice cu M13: chemată 0/15, chemată cu memorie 0/15, domeniul ei 0/15,
+domeniul ei cu memorie 0/15, subiect străin nechemată 15/15.
+
+Limita rămasă: 3,5 din 10 la Clienta, nu mai mult. Două formulări mai apăsate (verificare
+explicită înainte de a scrie, exemple de subiecte străine) n-au adus nimic peste zgomot — 7/20 și
+8/20 față de 7/20.
+
+**Marginile.** Cinci lucruri care se rupeau, fiecare cu testul lui:
+
+1. **`PAS` ajungea pe ecran.** Modelul scrie uneori „PAS." și continuă cu replica adevărată —
+   4 din 12 replici la măsurătoare. `fara_pas` tăia doar abținerea curată. Acum taie și semnalul
+   din față, cerând punctuație după el, ca „Pas cu pas" să rămână întreg.
+2. **Mesajul foarte lung.** Peste ~20.000 de litere Ollama scoate system prompt-ul din fereastră
+   ca să facă loc mesajului: răspunde un asistent generic, fără personaj și fără regula de tăcere
+   (măsurat la 20.000 și la 100.000). Plafon la `LITERE_IN_MESAJ`, în `main.py` și ca `maxlength`
+   în pagină, deci refuzul nu se vede niciodată din interfață.
+3. **`/api/health` cu Ollama oprit** răspundea cu eroare de server, deci nu se putea distinge un
+   server picat de un model picat. Acum răspunde `model_raspunde: false`.
+4. **Conversația ștearsă în timpul unei runde** era recreată de replica rămasă. `salveaza_mesaj`
+   spune acum dacă a avut unde scrie, iar replica fără casă nu se mai anunță ca terminată.
+5. **Lista de conversații se aranja aleator.** `_acum()` se baza pe microsecundele lui
+   `datetime.now()`, dar ceasul Windows stă pe loc ~15ms: șase apeluri la rând dau aceeași
+   valoare, iar la egalitate sortarea cădea pe sufixul aleator din id — conversația tocmai făcută
+   putea ajunge sub una veche. `_acum()` e acum strict crescător. Ăsta explică și testul care
+   pica din când în când la suita întreagă.
+
+Un răspuns care nu e flux (404, 422, 500) e tratat explicit în pagină: până acum punctele de
+„scrie…" se învârteau până la mesajul următor.
+
+**Demo-ul** e în `DEMO.md`: întrebarea (§16.7, unde Maestra și Clienta au interese opuse), ce se
+arată în ce ordine, ce fac dacă modelul răspunde prost live, și cronometrul real. Repetat de la
+cap la coadă în Chrome, pe pagina adevărată: **74 de secunde** de mașină din cele 5-7 minute.
+
+## M15 — Cine ia cuvântul se hotărăște înainte, nu prin `PAS`
+
+De la M8, runda pornită de mesajul meu întreba toate cele cinci personaje și lăsa `PAS` să
+filtreze. M10 și M14 au făcut filtrul să funcționeze — dar numai pentru întrebarea **îngustă**.
+
+La una largă n-are ce filtra. La „vreau să dezvolt o aplicație de generare tipare pentru
+bijuterii Miyuki", subiectul le pică aproape tuturor în domeniu, deci criteriul se potrivește
+*corect* și pentru cine n-are nimic de spus. Ce iese e non-sequitur din inventarul propriu —
+măsurat, pe exact acel mesaj:
+
+```
+Antreprenoarea : MVP-ul trebuie să fie un generator de tipare bazat pe dimensiuni... abonament lunar.
+Clienta        : Super, vreau să văd cum arată în roz.
+Maestra        : PAS
+Operatoarea    : PAS
+Programatorul  : Sunt gata să începem. Trebuie să decidem cum vom structura lucrurile...
+```
+
+Replica Clientei e chiar cazul: criteriul ei („cum arată bijuteria") s-a potrivit, dar la o
+întrebare de fezabilitate n-avea ce căuta.
+
+**Reparat prin selecție, nu prin prompt.** Prompturile merg 5/5 pe întrebări înguste (M14), deci
+n-aveau ce repara. Se alege dinainte cine ia cuvântul, cu `alege_vorbitorul`, funcția care exista
+deja și era testată de la M12:
+
+- Cei chemați cu `@` intră toți, garantat. Neschimbat.
+- Fără nicio mențiune se aleg `VORBITORI_PE_RUNDA` — doi-trei, tras la sorți — nu toți cinci.
+- Peste cei chemați intră cel mult **unul** nechemat, cu `PARTEA_NEMENTIONATILOR`. Aruncarea e
+  una singură pentru toți, în loc de una de fiecare cu pragul împărțit la câți sunt: iese același
+  20%, dar fără împărțire, deci procentul rămâne valid oricât ar crește consiliul. Plafonul de
+  unul singur contează — fără el runda ar crește la loc la patru-cinci guri.
+- `PAS` rămâne. Cine e ales fără să fie chemat pe nume poate tot să tacă, iar acolo `PAS` e plasa
+  de siguranță pentru întrebarea îngustă, pe care selecția n-are cum s-o judece. Cel intrat pe
+  cei 20% e obligat: pe el l-au adus sorții, nu subiectul.
+- Fără mențiune, sorții obligă un vorbitor **dintre cei aleși** (M9 rămâne). Unul neales n-ar fi
+  întrebat oricum, deci obligația lui n-ar fi ajuns nicăieri.
+- Nimeni nu vorbește de două ori. Lanțul de `@mențiuni` între personaje e neatins: cel chemat de
+  altcineva trece în fața cozii și pierde dreptul de a tăcea, chiar dacă nu fusese ales la
+  început.
+
+`ordinea_vorbitorilor` a dispărut — întorcea tot consiliul și n-o mai chema nimeni. La fel ca
+`probabilitati` la M9: cod care descria altceva decât se întâmplă.
+
+**Măsurat pe `gemma4:e2b`, câte 5 runde de fiecare fel:**
+
+| Mesaj | Înainte: vorbesc / apeluri / timp | După: vorbesc / apeluri / timp |
+| --- | --- | --- |
+| Larg („vreau să dezvolt o aplicație…") | 2,4 / 5 / 5,0s | 1,4 / 2,8 / **3,0s** |
+| Îngust („cât durează o comandă specială?") | 4,0 / 5 / 5,5s | 2,0 / 2,2 / **2,5s** |
+| Cu `@Maestra` | 1,2 / 5 / 5,0s | 1,0 / 1,0 / **2,0s** |
+
+Runda se termină în aproape jumătate din timp, pentru că nu mai costă cinci apeluri la model.
+
+**Ce s-a văzut la măsurătoare și nu se aștepta:** după listele de subiecte de la M14, întrebarea
+largă aducea deja doar 2,4 vorbitori din 5, nu 4-5. Iar cea mai aglomerată rundă nu era cea largă,
+ci una **îngustă** despre timpi de execuție (4,0 din 5) — acolo criteriul chiar se potrivește
+pentru patru dintre ei. Selecția o scurtează și pe aceea.
+
+**Compromisul, spus pe față:** pe întrebarea largă vorbesc acum 1,4 în medie, mai puțin decât cele
+2,4 dinainte, pentru că dintre cei doi-trei aleși doar unul e obligat și ceilalți pot tăcea. Dacă
+o rundă de un singur vorbitor e prea săracă, obligarea tuturor celor aleși e o linie în
+`obligati_sa_raspunda` — dar atunci `PAS` nu mai are unde să se declanșeze în runda pornită de
+mine, deci întrebarea îngustă ar aduce înapoi replici de umplutură.
+
+## M16 — Replica degenerată se tratează ca tăcere
+
+„Fiecare răspunde ultimei replici din chat" (M8) are un efect secundar care se vede doar pe un
+model mic: **când replica dinainte e o întrebare, ea ajunge ca întrebare adresată lui**
+(`intrebare = context.pop()` în `replica_personajului`), iar modelul o ia literal. Operatoarea a
+întrebat „Cât de multe coduri Miyuki sunt necesare pentru o formă dată?", iar Clienta a răspuns
+„Multe."
+
+Regula nu se schimbă — tot ea produce și replicile bune, cele care decurg din ce a zis altcineva,
+adică punctul 4 din definiția de „gata". Se taie rezultatul, nu regula.
+
+**Pragul.** `LITERE_MINIME_REPLICA` (`backend/ai_client.py`), lângă `SEMNAL_PAS`, pentru că e
+aceeași cale: sub 15 litere, fără cifră și fără `@`, replica se tratează ca tăcere — nu ajunge pe
+ecran, nu intră în istoric. Cele două excepții există ca pragul să nu mănânce tocmai vocile care
+vorbesc scurt din fire: „~30g" e chiar contribuția Operatoarei, iar „@Maestra?" pornește replica
+altcuiva. Filtrarea e în **stream** (`fara_replici_degenerate`), din același motiv ca la `PAS`:
+altfel „Multe." ar apărea și ar dispărea sub ochii utilizatoarei.
+
+**Cel obligat nu are voie să dispară.** Dacă l-am chemat pe nume și tot scoate o replică
+degenerată, înghițirea ei l-ar șterge cu totul din rundă — adică exact runda goală pe care a
+reparat-o M9, dar de data asta după ce am convocat pe cineva explicit. Soluția aleasă:
+**a doua încercare, la mesajul meu.** Nu e o repetare a aceluiași apel — atacă tocmai cauza:
+întrebarea care l-a încurcat iese din context (`_context_dinaintea_mesajului_meu`), iar el
+răspunde mesajului meu, cel care l-a și convocat. După a doua încercare nu se mai insistă:
+tăcerea se anunță ca atare, prin `consiliul_tace`.
+
+Măsurat pe `gemma4:e2b`, Clienta obligată, cu întrebarea Operatoarei ca ultimă replică:
+
+| | |
+| --- | --- |
+| Prima încercare, la întrebarea Operatoarei | **6/6 degenerate** — „Nu știu." de fiecare dată |
+| A doua încercare, la mesajul meu | **6/6 replici bune** — „Serios? Nu vreau nicio aplicație, vreau doar să văd cum arată în roz." |
+
+Alternativele respinse: să lase replica degenerată pe ecran când vine de la cel convocat (arată
+exact problema pe care o repar), și să repete același apel (la temperatura 0,3 a Operatoarei,
+al doilea răspuns e adesea primul).
+
+**Costul, asumat:** cel obligat care tace consumă acum două apeluri la model, nu unul. Se
+întâmplă și în cazul cunoscut de la M10 — pe un mesaj fără conținut („Mulțumesc, notat."),
+obligatul tace uneori — unde a doua încercare e la fel de binevenită. Ceilalți aleși n-au a doua
+șansă: nu li s-a cerut nimănui să vorbească.
+
+## M17 — Încărcarea la rece care pică, și eroarea care nu se vedea nicăieri
+
+Un mesaj trimis după o pauză mai lungă s-a ales cu bula roșie „modelul nu a răspuns". Nu se
+putea afla de ce: `replica_personajului` prindea excepția și o arunca, fără s-o scrie nicăieri.
+
+Cauza, găsită în `%LOCALAPPDATA%\Ollama\server.log`:
+
+```
+14:15:57 ERROR llama-server terminated  exit status 0xc0000409
+         CUDA error: shared object initialization failed
+```
+
+E **exact** eroarea pentru care exista workaround-ul `num_gpu: 0`, despre care comentariul din
+`ai_client.py` scria că e rezolvată în Ollama 0.32.14. Nu e rezolvată — e doar rară: în aceeași
+zi, din patru încărcări la rece, trei au mers și una a picat, iar încercarea următoare a mers.
+Comentariul e actualizat cu măsurătoarea nouă, nu dublat cu una la coadă.
+
+Două schimbări, amândouă mici:
+
+1. **`_bucati_cu_reincercare`** (`backend/ai_client.py`): dacă modelul crapă **înainte de primul
+   cuvânt**, se mai încearcă o dată. Condiția contează — dacă ar cădea după ce a scris ceva, a
+   doua încercare ar dubla textul în bulă, iar utilizatoarea a și citit prima jumătate. Costul,
+   când Ollama chiar e oprit: două conexiuni refuzate în loc de una, adică milisecunde.
+2. **Motivul ajunge în log.** Pe ecran rămâne bula roșie scurtă, dar în consola serverului se
+   scrie excepția, ca și la `incalzeste_modelul` și `actualizeaza_rezumat`. Fără ea nu se poate
+   distinge Ollama oprit de o încărcare picată pe GPU sau de un model nedescărcat.
+
+Ce **nu** s-a schimbat: nu se reintroduce `num_gpu: 0`. Când modelul chiar se încarcă, merge pe
+GPU cu cifrele de la M0 — 1,59 GB VRAM, 84,5 tokeni/s. Workaround-ul ar aduce înapoi cele ~98s de
+încărcare pe CPU și crash-urile în rafală.
+
 ## Definiția de „gata"
 
 1. Pornesc totul cu un singur pas (sau doi, dacă backend + frontend sunt separate) — nu o
@@ -289,6 +499,33 @@ corect.
 4. Un personaj comentează ce a zis alt personaj, nu doar ce am zis eu.
 5. Dau refresh și conversația e tot acolo — chiar cea în care eram, dintre mai multe.
 6. Niciun `TODO` sau cod de test uitat în proiect.
+
+### Verificat la M14, punct cu punct
+
+Toate șase trec. Verificarea s-a făcut pe 20 august 2026, pe `gemma4:e2b`, cu serverul pornit
+exact cu comanda din `README.md`, iar pașii de interfață au fost jucați automat în Chrome, pe
+pagina adevărată — nu bifați din ochi.
+
+1. **Un singur pas.** `cd backend` + `.venv\Scripts\python.exe -m uvicorn main:app --reload`, apoi
+   `GET /` răspunde 200 și `GET /api/health` răspunde `model_raspunde: true`. Fără al doilea pas:
+   frontendul e servit de același proces.
+2. **Întrebare din §16, răspunsuri care se simt ca opinii.** §16.7 (arătăm AB-ul în preview deși
+   simularea nu e fidelă?): Maestra — „AB-ul nu se poate simula fidel pe ecran, așa că nu merită
+   să ne deranjăm cu el"; Clienta — „Vreau să văd doar culorile." Poziții, nu fișe.
+3. **Cele 5 sunt clar distincte.** De la M14 și măsurabil, nu doar la citire: mediana replicii e
+   5 cuvinte la Operatoarea, 6 la Clienta, 32 la Antreprenoarea, 39 la Programatorul, 51 la
+   Maestra. Se recunosc după lungime înainte de a ajunge la conținut.
+4. **Un personaj comentează ce a zis altul.** În runda de la punctul 2, Programatorul a propus
+   compromisul dintre poziția Maestrei și cea a Clientei — nu mi-a răspuns mie.
+5. **Refresh și conversația e tot acolo, chiar cea în care eram.** După reload, subtitlul era tot
+   `@Maestra merita sa simulam…` și cele 106 mesaje ale ei, deși nu era prima din listă.
+6. **Fără `TODO`/`FIXME`/`XXX`, cod comentat sau harness uitat.** Căutare peste tot ce nu e în
+   `arhiva/`: zero, în afară de textul regulii din `CLAUDE.md` și din lista de mai sus. Cele două
+   `print` rămase în `backend/` sunt avertismentele din `incalzeste_modelul` și
+   `actualizeaza_rezumat`, ambele pe căi de eroare documentate, nu depanare uitată. Măsurătorile
+   de la M14 s-au făcut în scratchpad, în afara proiectului.
+
+Suita: **216 de teste, ~28s** (la M17), inclusiv cele cinci care vorbesc cu modelul pe bune.
 
 ## Ce rămâne explicit în afara acestei etape
 

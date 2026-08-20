@@ -11,6 +11,8 @@ arhitectură, personajele se contrazic din unghiurile lor, iar eu văd compromis
 Nu e un chatbot care știe totul despre aplicație — e o simulare de consiliu consultativ, cu
 personaje care au opinii, nu doar informații.
 
+Scenariul de prezentare, cu ce se arată în ce ordine, e în `DEMO.md`.
+
 ## 2. Personajele (5)
 
 - **Maestra** — artizan Miyuki cu experiență reală. Vorbește despre culoare, finisaje,
@@ -34,38 +36,64 @@ personaje care au opinii, nu doar informații.
   târziu (motor de preview interschimbabil, generarea sumei de plată pe server, biblioteca
   Miyuki ca modul separat) — și spune clar când ceva e prea mult pentru etapa curentă.
 
+Nu vorbesc toate la fel de mult. Fiecare are în system prompt-ul lui alt nivel de energie, ca
+într-un grup real unde unul scrie trei cuvinte și altul un paragraf: Operatoarea și Clienta taie
+scurt, Maestra își face loc pentru un exemplu din meșteșug, iar Programatorul are voie să explice
+pe îndelete, dar numai când decizia de azi ar forța o rescriere mâine. Cifrele măsurate stau în
+fiecare `personaj-*.md`, la „Nivelul de energie".
+
 ## 3. Cum funcționează
 
 Chat de grup clasic: eu scriu un mesaj (o întrebare din `concept-aplicatie-miyuki.md`, de
 exemplu una din secțiunea „Întrebări deschise", sau o decizie de design nouă).
 
 Cine răspunde — ca într-un chat de grup adevărat, unde nu sare toată lumea la fiecare mesaj.
-Toate personajele sunt întrebate la fiecare mesaj, dar vorbește doar cine are ceva de spus:
+La fiecare mesaj se aleg vorbitorii rundei, și numai ei sunt întrebați:
 
-- **Cine are ceva de adăugat, vorbește. Cine nu, tace.** Criteriul e domeniul fiecăruia, scris
-  în system prompt-ul lui: dacă mesajul nu ține de el, scrie `PAS` — un semnal care nu ajunge
-  niciodată pe ecran și nu se salvează în istoric.
-- **Cei chemați cu `@NumePersonaj` nu au voie să tacă.** Mențiunea e o convocare, nu o
+- **Cei chemați cu `@NumePersonaj` intră toți, garantat.** Mențiunea e o convocare, nu o
   probabilitate.
-- **Nemenționații își împart 20%** — șansa de a fi obligați să contribuie chiar dacă n-aveau
-  nimic pregătit, ca discuția să nu se stingă. Zarurile se aruncă *înainte* de a-i întreba,
-  tocmai ca nimeni să nu fie pus să vorbească după ce tocmai a zis că n-are ce. Procentul se
-  împarte la câți sunt nemenționați, deci rămâne 20% și când consiliul crește.
+- **Fără nicio mențiune vorbesc doi-trei, nu tot consiliul** — câți, se trage la sorți.
+- **Peste cei chemați intră cel mult unul nechemat, cu șansa de 20%** — ca discuția să nu se
+  învârtă mereu în jurul acelorași, chiar și când eu chem pe cineva anume. Aruncarea e una
+  singură pentru toți, deci procentul rămâne 20% oricât ar crește consiliul.
+- **Cine e ales fără să fie chemat pe nume poate tot să tacă**, dacă mesajul chiar nu ține de
+  el: scrie `PAS`, un semnal care nu ajunge niciodată pe ecran și nu se salvează în istoric.
+  Fără nicio mențiune, unul dintre cei aleși e obligat, ca mesajul meu să nu rămână fără niciun
+  răspuns; ceilalți decid fiecare pentru el.
 - **Mențiune făcută de un personaj** — `@NumePersonaj` scris de altcineva cheamă la fel ca
   `@NumePersonaj` scris de mine: cel chemat trece în fața cozii, răspunde imediat și pierde
-  dreptul de a tăcea. Nimeni nu vorbește de două ori în aceeași rundă.
-- **Fără nicio mențiune, sorții obligă un singur vorbitor.** Nimeni nefiind chemat, toți ar
-  putea scrie `PAS` și mesajul meu ar rămâne fără niciun răspuns pe ecran. Unul e tras la sorți
-  și n-are voie să tacă; ceilalți decid fiecare pentru el. Dacă până la urmă tot n-a vorbit nimeni, pagina
-  o spune într-o linie — tăcerea consiliului nu trebuie confundată cu o defecțiune.
+  dreptul de a tăcea, chiar dacă nu fusese ales la început. Nimeni nu vorbește de două ori în
+  aceeași rundă.
+- Dacă până la urmă tot n-a vorbit nimeni, pagina o spune într-o linie — tăcerea consiliului nu
+  trebuie confundată cu o defecțiune.
+
+**De ce selecție și nu întrebați toți.** Până acum erau întrebate toate cinci la fiecare mesaj,
+iar `PAS` filtra. Filtrul ăsta n-are ce lucra la o întrebare largă: la „vreau să dezvolt o
+aplicație de generare tipare pentru bijuterii Miyuki", subiectul le pică aproape tuturor în
+domeniu, deci criteriul se potrivește corect și pentru cine n-are nimic de spus — iar ce iese
+e non-sequitur din inventarul propriu („Super, vreau să văd cum arată în roz." la o întrebare
+de fezabilitate). Modelul local nu poate judeca singur relevanța la întrebări largi, așa că
+relevanța nu i se mai cere lui: cine ia cuvântul se hotărăște înainte de a-l întreba. `PAS`
+rămâne, dar ca plasă de siguranță pentru întrebarea îngustă, nu ca mecanism principal.
 
 Fiecare răspunde **ultimei replici din chat**, nu neapărat mesajului meu — al doilea vorbitor
 reacționează la primul, așa cum curge o discuție reală. Restul conversației îi rămâne în
 context, deci poate contrazice și ceva spus mai devreme.
 
+Când replica dinainte e o întrebare, regula asta are un efect secundar: modelul local o ia ca pe
+o întrebare adresată lui și răspunde literal, într-un cuvânt („Multe.", „Nu știu."). O replică
+prea scurtă ca să ducă ceva mai departe se tratează ca tăcere — nu ajunge pe ecran și nu se
+salvează. Cifrele și chemările cu `@` trec oricât de scurte ar fi: „~30g" e chiar contribuția
+Operatoarei. Cine a fost convocat pe nume nu dispare totuși din rundă: mai primește o încercare,
+la mesajul meu, cel care l-a chemat.
+
 Pot interveni oricând — nu aștept să se termine runda. Mesajul meu nou taie runda în curs:
 replica pe jumătate scrisă dispare de pe ecran și nu se salvează, iar cele deja terminate rămân.
 Nu se suprapun două runde, iar pe server generarea se oprește odată cu runda anulată.
+
+Mesajul meu are o lungime maximă. Nu e o regulă de politețe: peste ea, modelul local scoate
+system prompt-ul din fereastră ca să facă loc textului și îmi răspunde un asistent generic, fără
+personaj. Caseta se oprește acolo, deci nu ajung niciodată să văd un refuz.
 
 ## 3.1 Mai multe conversații
 

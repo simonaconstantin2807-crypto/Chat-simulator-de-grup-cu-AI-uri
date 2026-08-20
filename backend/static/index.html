@@ -547,7 +547,10 @@
     <div class="zona-input">
       <div class="sugestii" id="sugestii" hidden></div>
       <form id="form-mesaj">
-        <input type="text" id="input-mesaj" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
+        <!-- maxlength = LITERE_IN_MESAJ din backend/main.py: peste atat, Ollama scoate system
+             prompt-ul din fereastra si raspunde un asistent generic, fara personaj. Oprit aici,
+             refuzul serverului nu se vede niciodata din pagina. -->
+        <input type="text" id="input-mesaj" maxlength="2000" placeholder="Scrie un mesaj în consiliu..." autocomplete="off" />
         <button type="submit">Trimite</button>
       </form>
       <div class="indiciu" id="indiciu"></div>
@@ -923,10 +926,11 @@
       chip.classList.toggle("selectat", chemate.some((p) => p.id === chip.dataset.id));
     }
 
-    // Cei chemati raspund sigur, dar oricare dintre ceilalti poate interveni neinvitat.
+    // Cei chemati raspund sigur; peste ei intra cel mult unul, tras la sorti. Fara nicio
+    // mentiune vorbesc doi-trei alesi, nu tot consiliul (M15).
     indiciu.textContent = chemate.length
-      ? `Răspunde sigur: ${numeChemate.join(", ")} — restul, doar dacă au ceva de zis.`
-      : "Fără @mențiune răspunde tot consiliul, pe rând.";
+      ? `Răspunde sigur: ${numeChemate.join(", ")} — rar se mai bagă și altcineva.`
+      : "Fără @mențiune vorbesc doi-trei, trași la sorți.";
   }
 
   // ---------- autocomplete pentru @ ----------
@@ -1096,6 +1100,15 @@
         body: JSON.stringify(corp),
         signal: frana.signal,
       });
+
+      // Un răspuns care nu e flux (404 pe o conversație ștearsă, 422 pe un mesaj prea lung,
+      // 500) n-are evenimente de citit: fără ramura asta, punctele s-ar învârti până la
+      // următorul mesaj și n-aș ști de ce.
+      if (!raspuns.ok) {
+        curent.bula.className = "bula eroare";
+        curent.bula.textContent = `serverul a refuzat cererea (${raspuns.status})`;
+        return false;
+      }
 
       optiuni.laPornire?.();
 

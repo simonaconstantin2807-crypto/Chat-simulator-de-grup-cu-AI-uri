@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 import istoric
 import main
+import personaje
 from main import app
 
 client = TestClient(app)
@@ -144,17 +145,21 @@ def test_profilurile_includ_utilizatoarea():
     assert utilizator["avatar"] and utilizator["culoare"]
 
 
-def test_fara_mentiune_raspunde_tot_consiliul(monkeypatch, tmp_path):
+def test_fara_mentiune_vorbesc_doar_cativa_nu_tot_consiliul(monkeypatch, tmp_path):
+    """Pana la M15 raspundeau toate cinci si filtra PAS. La o intrebare larga n-avea ce filtra:
+    subiectul le pica tuturor in domeniu, deci vorbeau 4-5, cu non-sequitur de la cei fara nimic
+    de spus. Acum runda isi alege vorbitorii."""
     conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
     _model_fals(monkeypatch)
 
     evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
 
-    assert _vorbitori(evenimente) == list(main.PERSONAJE)
-    assert sum(1 for e in evenimente if e["tip"] == "gata") == 5
+    minim, maxim = personaje.VORBITORI_PE_RUNDA
+    assert minim <= len(_vorbitori(evenimente)) <= maxim < len(main.PERSONAJE)
 
 
-def test_mentionatul_raspunde_iar_cine_n_are_ce_zice_tace(monkeypatch, tmp_path):
+def test_mentionatul_ia_cuvantul(monkeypatch, tmp_path):
     conversatie = _istoric_izolat(monkeypatch, tmp_path)
     _zaruri(monkeypatch)
     _toti_tac(monkeypatch, in_afara_de="Operatoarea")
@@ -164,16 +169,16 @@ def test_mentionatul_raspunde_iar_cine_n_are_ce_zice_tace(monkeypatch, tmp_path)
     assert _vorbitori(evenimente) == ["operatoarea"]
 
 
-def test_toti_sunt_intrebati_chiar_daca_doar_unul_vorbeste(monkeypatch, tmp_path):
-    """Tacerea costa un apel la model - nu se poate sti ca cineva n-are nimic fara sa-l intrebi."""
+def test_nu_se_mai_intreaba_tot_consiliul_ca_sa_vorbeasca_unul(monkeypatch, tmp_path):
+    """Pana la M15, o mentiune costa cinci apeluri la model: erau intrebati toti si tacea cine
+    n-avea nimic. Acum e intrebat cine ia cuvantul, deci runda se si termina mai repede."""
     conversatie = _istoric_izolat(monkeypatch, tmp_path)
-    _zaruri(monkeypatch)
+    _zaruri(monkeypatch)  # 1.0: nu intra niciun nementionat peste cea chemata
     cereri = _toti_tac(monkeypatch, in_afara_de="Operatoarea")
 
     _evenimente("@Operatoarea câte grame ies dintr-un tub?", conversatie)
 
-    assert len(cereri) == len(main.PERSONAJE)
-    assert cereri[0]["nume"] == "Operatoarea"  # cel chemat e primul intrebat
+    assert [c["nume"] for c in cereri] == ["Operatoarea"]
 
 
 def test_cine_tace_nu_lasa_urma_in_istoric(monkeypatch, tmp_path):
@@ -191,11 +196,12 @@ def test_pagina_afla_ca_personajul_a_tacut(monkeypatch, tmp_path):
     """Bula de "scrie..." e deja pe ecran cand se afla; trebuie stearsa cumva."""
     conversatie = _istoric_izolat(monkeypatch, tmp_path)
     _zaruri(monkeypatch)
-    _toti_tac(monkeypatch, in_afara_de="Operatoarea")
+    _toti_tac(monkeypatch, in_afara_de="Maestra")
 
-    evenimente = _evenimente("@Operatoarea câte grame ies dintr-un tub?", conversatie)
+    evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
 
-    assert sum(1 for e in evenimente if e["tip"] == "tace") == len(main.PERSONAJE) - 1
+    intrebati = sum(1 for e in evenimente if e["tip"] == "personaj")
+    assert sum(1 for e in evenimente if e["tip"] == "tace") == intrebati - 1
     assert sum(1 for e in evenimente if e["tip"] == "gata") == 1
 
 
@@ -228,21 +234,34 @@ def test_mentionatul_nu_are_voie_sa_taca(monkeypatch, tmp_path):
 
     _evenimente("@Operatoarea câte grame ies dintr-un tub?", conversatie)
 
-    chemata = next(c for c in cereri if c["nume"] == "Operatoarea")
-    libera = next(c for c in cereri if c["nume"] == "Maestra")
-    assert main.INDEMN_OBLIGAT in chemata["sistem"]
-    assert main.INDEMN_OBLIGAT not in libera["sistem"]
+    assert [c["nume"] for c in cereri] == ["Operatoarea"]
+    assert main.INDEMN_OBLIGAT in cereri[0]["sistem"]
 
 
-def test_tacutul_care_castiga_aruncarea_e_obligat_si_el(monkeypatch, tmp_path):
+def test_alesul_care_nu_e_chemat_pe_nume_poate_sa_taca(monkeypatch, tmp_path):
+    """Fara mentiune, sortii obliga unul singur dintre cei alesi. Ceilalti pastreaza PAS - acolo
+    ramane plasa de siguranta pentru intrebarea ingusta, pe care selectia n-are cum s-o judece."""
     conversatie = _istoric_izolat(monkeypatch, tmp_path)
-    _zaruri(monkeypatch, 0.0, 1.0, 1.0, 1.0)  # castiga primul tacut din personaje.json
+    _zaruri(monkeypatch)
+    cereri = _model_fals(monkeypatch)
+
+    _evenimente("Cum arătăm prețurile?", conversatie)
+
+    obligati = [c for c in cereri if main.INDEMN_OBLIGAT in c["sistem"]]
+    assert len(cereri) > 1
+    assert len(obligati) == 1
+
+
+def test_cel_intrat_pe_cei_douazeci_la_suta_e_intrebat_si_obligat(monkeypatch, tmp_path):
+    """Pe el l-au adus sortii, nu subiectul, deci nu se mai intreaba daca are ceva de zis."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch, 0.0, 0.0)  # intra un nementionat, si e primul de pe lista
     cereri = _model_fals(monkeypatch)
 
     _evenimente("@Operatoarea câte grame ies dintr-un tub?", conversatie)
 
-    norocoasa = next(c for c in cereri if c["nume"] == "Antreprenoarea")
-    assert main.INDEMN_OBLIGAT in norocoasa["sistem"]
+    assert [c["nume"] for c in cereri] == ["Operatoarea", "Antreprenoarea"]
+    assert all(main.INDEMN_OBLIGAT in c["sistem"] for c in cereri)
 
 
 def test_mai_multe_mentiuni_raspund_in_ordinea_scrierii(monkeypatch, tmp_path):
@@ -269,7 +288,7 @@ def test_fiecare_raspunde_ultimei_replici_din_chat(monkeypatch, tmp_path):
 
 def test_personajele_aud_ce_s_a_zis_inainte_in_aceeasi_runda(monkeypatch, tmp_path):
     conversatie = _istoric_izolat(monkeypatch, tmp_path)
-    _zaruri(monkeypatch)
+    _zaruri(monkeypatch, 0.0, 1.0)  # intra si un al treilea, ultimul de pe lista
     cereri = _model_fals(monkeypatch)
 
     _evenimente("@Clienta și @Maestra, ce ziceți?", conversatie)
@@ -334,7 +353,7 @@ def test_personajele_aud_replicile_celorlalti_intre_runde(monkeypatch, tmp_path)
     _zaruri(monkeypatch)
     cereri = _model_fals(monkeypatch)
 
-    _evenimente("Prima rundă, toată lumea", conversatie)
+    _evenimente("@Clienta, tu ce zici?", conversatie)
     _evenimente("@Maestra și acum?", conversatie)
 
     ultima = [c for c in cereri if c["nume"] == "Maestra"][-1]
@@ -932,3 +951,170 @@ def test_si_replica_de_la_sine_vine_cu_memoria_lunga(monkeypatch, tmp_path):
     _continuare(conversatie, runda)
 
     assert "Decizii: preview pe server" in cereri[0]["sistem"]
+
+
+# ---------- ce se intampla cand ceva merge prost ----------
+
+
+def test_pagina_afla_ca_modelul_nu_raspunde_in_loc_sa_primeasca_o_eroare_de_server(monkeypatch):
+    """Cu Ollama oprit, „e viu serverul?" trebuie sa raspunda, nu sa cada si el."""
+
+    def crapa(*argumente, **cuvinte):
+        raise RuntimeError("Ollama oprit")
+
+    monkeypatch.setattr(main, "trimite_mesaj", crapa)
+
+    raspuns = client.get("/api/health")
+
+    assert raspuns.status_code == 200
+    assert raspuns.json()["model_raspunde"] is False
+
+
+def test_mesajul_prea_lung_e_refuzat_si_nu_intra_in_istoric(monkeypatch, tmp_path):
+    """Peste plafon, Ollama scoate system prompt-ul din context si raspunde un asistent
+    generic, fara personaj si fara regula de tacere. Masurat la M14, pe 20.000 de litere."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    cereri = _model_fals(monkeypatch)
+
+    raspuns = client.post(
+        f"/api/conversatii/{conversatie}/mesaje", json={"text": "a" * (main.LITERE_IN_MESAJ + 1)}
+    )
+
+    assert raspuns.status_code == 422
+    assert cereri == []
+    assert istoric.incarca_istoric(conversatie) == []
+
+
+def test_un_mesaj_lung_cat_plafonul_trece(monkeypatch, tmp_path):
+    """Plafonul opreste derapajele, nu intrebarile lungi: exact cat e permis merge intreg."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    cereri = _model_fals(monkeypatch)
+    text = "Ce zici de " + "mărgele " * 200
+
+    evenimente = _evenimente(text[: main.LITERE_IN_MESAJ], conversatie)
+
+    assert _vorbitori(evenimente)
+    assert cereri[0]["mesaj"] == text[: main.LITERE_IN_MESAJ]
+
+
+def test_conversatia_stearsa_in_timpul_rundei_nu_e_reinviata_de_replici(monkeypatch, tmp_path):
+    """Sterg conversatia cat vorbeste consiliul: replicile ramase n-au unde se duce si nu
+    trebuie sa refaca fisierul pe care tocmai l-am aruncat."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+
+    def raspunde_si_sterg(mesaj, nume_personaj, sistem=None, temperatura=None, context=None):
+        istoric.sterge_conversatie(conversatie)
+        yield f"replica {nume_personaj}"
+
+    monkeypatch.setattr(main, "trimite_mesaj_stream", raspunde_si_sterg)
+
+    evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
+
+    assert "gata" not in [e["tip"] for e in evenimente]
+    assert istoric.citeste_conversatie(conversatie) is None
+
+
+def test_replica_dintr_o_conversatie_stearsa_nu_o_readuce_in_lista(monkeypatch, tmp_path):
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    istoric.sterge_conversatie(conversatie)
+
+    salvat = istoric.salveaza_mesaj(conversatie, {"eu": False, "nume": "Maestra", "text": "Bună"})
+
+    assert salvat is False
+    assert conversatie not in [c["id"] for c in istoric.listeaza_conversatii()]
+
+
+# ---------- replicile degenerate, in runda ----------
+
+
+def _model_pe_rand(monkeypatch, *replici: str):
+    """Modelul da, pe rand, replicile date; ultima se repeta daca se cere mai mult."""
+    cereri = []
+
+    def raspunde(mesaj, nume_personaj, sistem=None, temperatura=None, context=None):
+        cereri.append({"mesaj": mesaj, "nume": nume_personaj, "sistem": sistem, "context": context})
+        yield replici[min(len(cereri) - 1, len(replici) - 1)]
+
+    monkeypatch.setattr(main, "trimite_mesaj_stream", raspunde)
+    return cereri
+
+
+def test_replica_degenerata_nu_ajunge_pe_ecran_si_nici_in_istoric(monkeypatch, tmp_path):
+    """Aceeasi cale ca PAS: nu se vede, nu se salveaza."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_pe_rand(monkeypatch, "Multe.")
+
+    evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
+
+    assert not [e for e in evenimente if e["tip"] == "text"]
+    assert _vorbitori(evenimente) == []
+    assert [m.get("personajId") for m in istoric.incarca_istoric(conversatie)] == [None]
+
+
+def test_chematul_care_scoate_o_replica_degenerata_mai_primeste_o_sansa(monkeypatch, tmp_path):
+    """Cel convocat pe nume n-are voie sa dispara: runda goala e exact ce a reparat M9."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    cereri = _model_pe_rand(monkeypatch, "Multe.", "Contează codul exact al mărgelei.")
+
+    evenimente = _evenimente("@Maestra ce zici?", conversatie)
+
+    assert len(cereri) == 2
+    assert _vorbitori(evenimente) == ["maestra"]
+
+
+def test_a_doua_incercare_intreaba_mesajul_meu_nu_replica_dinainte(monkeypatch, tmp_path):
+    """Cauza replicii de un cuvant e ca intrebarea dinainte era o intrebare. La a doua
+    incercare i se da mesajul meu, care l-a si convocat."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    istoric.salveaza_mesaj(
+        conversatie,
+        {"eu": False, "personajId": "operatoarea", "nume": "Operatoarea", "text": "Câte coduri?"},
+    )
+    cereri = _model_pe_rand(monkeypatch, "Multe.", "Contează codul exact al mărgelei.")
+
+    _evenimente("@Maestra ce zici?", conversatie)
+
+    assert cereri[0]["mesaj"] == "@Maestra ce zici?"  # ultima replica din chat e mesajul meu
+    assert cereri[1]["mesaj"] == "@Maestra ce zici?"
+    assert "Operatoarea: Câte coduri?" in [m["content"] for m in cereri[1]["context"]]
+
+
+def test_cel_neobligat_nu_primeste_a_doua_sansa(monkeypatch, tmp_path):
+    """Un apel in plus se da doar cui i s-a cerut sa vorbeasca; restul tac si gata."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    cereri = _model_pe_rand(monkeypatch, "Multe.")
+
+    evenimente = _evenimente("Cum arătăm prețurile?", conversatie)
+
+    intrebati = [e for e in evenimente if e["tip"] == "personaj"]
+    # unul singur e obligat, deci un singur apel in plus peste cati au fost intrebati
+    assert len(cereri) == len(intrebati) + 1
+
+
+def test_dupa_a_doua_incercare_degenerata_personajul_tace(monkeypatch, tmp_path):
+    """Nu se insista la nesfarsit: doua incercari, apoi tacerea se anunta ca atare."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    cereri = _model_pe_rand(monkeypatch, "Multe.", "Puține.")
+
+    evenimente = _evenimente("@Maestra ce zici?", conversatie)
+
+    assert len(cereri) == 2
+    assert evenimente[-1] == {"tip": "consiliul_tace"}
+
+
+def test_replica_scurta_cu_cifra_ramane_in_istoric(monkeypatch, tmp_path):
+    """Pragul n-are voie sa manance vocea Operatoarei, care chiar vorbeste in cifre."""
+    conversatie = _istoric_izolat(monkeypatch, tmp_path)
+    _zaruri(monkeypatch)
+    _model_pe_rand(monkeypatch, "~30g")
+
+    _evenimente("@Operatoarea câte grame?", conversatie)
+
+    assert [m["text"] for m in istoric.incarca_istoric(conversatie)][-1] == "~30g"

@@ -254,3 +254,16 @@ def test_rezumatul_nu_schimba_ordinea_conversatiilor(monkeypatch, tmp_path):
     istoric.salveaza_rezumat(conversatie, "Subiect: AB-ul", 6)
 
     assert [c["id"] for c in istoric.listeaza_conversatii()] == inainte
+
+
+def test_conversatiile_facute_una_dupa_alta_raman_in_ordinea_facerii(monkeypatch, tmp_path):
+    """Ceasul Windows sta pe loc ~15ms: sase apeluri la rand la `datetime.now()` dau aceeasi
+    microsecunda. Cand momentele ies egale, lista se asaza dupa sufixul aleator din id si
+    conversatia tocmai facuta poate ajunge sub una veche."""
+    _stocare_izolata(monkeypatch, tmp_path)
+
+    facute = [istoric.creeaza_conversatie()["id"] for _ in range(6)]
+
+    listate = [c["id"] for c in istoric.listeaza_conversatii()]
+
+    assert listate[: len(facute)] == list(reversed(facute))
